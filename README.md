@@ -13,25 +13,42 @@ pwsh ./install/Install-KritScxVsCode.ps1 -Mode Install
 ```
 
 This does everything: reads the SCX key from the Kritical secrets folder,
-persists it to HKCU, installs the extension into VS Code, drops the config,
-and verifies auth. HR16-compliant: **Install / Remove / Heal / Status** modes.
+persists it to HKCU, installs the extension into VS Code (stable **and**
+Insiders — `.5165g-H` install-script fix), drops the config, and verifies
+auth. HR16-compliant: **Install / Remove / Heal / Status** modes.
+
+---
+
+## What's new
+
+- **v0.1.2 (`.5165g` + `.5165h`)** — sidebar view **PROVIDER** + **markdown rendering** with fenced code + per-message **copy buttons** + **auto key-switch on 429**. CI relaxed to accept ≥10 PS module exports (Switch-KritScxKey added the 11th). New 50KB Kritical icon (up from 830 B).
+- **v0.1.1 (`.5165f`)** — plugin-first VSIX built + installed + `Switch-KritScxKey` shipped.
+- **v0.1.0 (`.5165e`)** — multi-key SCX rotation + auto-context + Kritical icon + CI + repo hygiene.
+- **v0.1.0-preview (`.5165`)** — kritical.vscode.SCXCode extension + Kritical.PS.SCXCode module + kritical-scxcode MCP server.
+
+Full log: [`CHANGELOG.md`](CHANGELOG.md).
 
 ---
 
 ## What the extension does
 
-Ships as `kritical.scxcode@0.1.0`, ~19 KB VSIX.
+Ships as `kritical.scxcode@0.1.2`, ~19-25 KB VSIX (grows a bit with the sidebar UI).
 
-- **Kritical-branded chat panel** in a dedicated activity-bar view (SCXCode
-  icon on the left) — dark-navy `#13365C` header + gold `#F2B500` accents,
-  status bar item, model picker.
+- **Kritical-branded sidebar view** (`.5165g`) — dedicated activity-bar view
+  container **PROVIDER** with the SCXCode icon on the left rail. Dark-navy
+  `#13365C` header + gold `#F2B500` accents. Model picker + status bar item.
+- **Markdown rendering** (`.5165g`) — model responses render as full markdown
+  (headings, lists, fenced code with language tags). Each message header carries
+  a **copy button** — one click puts either the assistant response OR the full
+  turn to clipboard.
 - **Auto-context** — every chat / slash command auto-prepends your active
   editor's file path, language, selection, and ± 30-line cursor window so the
   model always knows what you're looking at. Configurable
   (`kritical.scxcode.autoContext = off | file | file+selection | workspace-tree`).
-- **Auto-failover** — SCX 429 or `5xx` walks a fallback chain of models
-  (defaults `MiniMax-M2.7 → MAGPiE → gpt-oss-120b`). Also swaps HKCU keys via
-  `Switch-KritScxKey` when the current key is rate-limited.
+- **Auto-failover + auto-key-switch** (`.5165g`) — SCX 429 or `5xx` walks a
+  fallback chain of models (defaults `MiniMax-M2.7 → MAGPiE → gpt-oss-120b`).
+  On persistent 429, `Switch-KritScxKey` swaps to the next HKCU-registered
+  backup key (`SCX_API_KEY_2..9`) automatically — no reload.
 - **7 commands** (Command Palette → `Kritical:` prefix):
   - `Kritical: Open SCX Chat` — dedicated webview chat
   - `Kritical: Pick SCX Model` — quick-pick from the 9 chat models with AUD/1M pricing shown inline
@@ -46,20 +63,33 @@ Ships as `kritical.scxcode@0.1.0`, ~19 KB VSIX.
 
 **No API key ends up in source.** The extension reads `SCX_API_KEY` from HKCU
 (Kritical convention) at request time so key rotation is instant — no reload.
+The `.5165g` auto-key-switch on 429 makes the rotation happen without you
+noticing.
 
 ---
 
 ## Install
 
-### Path 1 — build + install from source (right now)
+### Path 1 — one-line installer (recommended)
+
+```powershell
+pwsh ./install/Install-KritScxVsCode.ps1 -Mode Install
+```
+
+Detects VS Code **stable** or **Insiders**, installs the latest built VSIX
+(`src/SCXCode-0.1.2.vsix`), seeds HKCU env vars from the Kritical secrets
+folder, and verifies auth. HR16-compliant: `-Mode` accepts `Install` /
+`Remove` / `Heal` / `Status`.
+
+### Path 2 — build + install from source
 
 ```powershell
 git clone https://github.com/Sir-J-AU/scx-vscode.git
 cd scx-vscode/src
 npm install
 npm run build                                                    # esbuild bundles extension.ts -> out/extension.js
-npx --yes @vscode/vsce package --allow-missing-repository        # emits SCXCode-0.1.0.vsix
-code-insiders --install-extension SCXCode-0.1.0.vsix
+npx --yes @vscode/vsce package --allow-missing-repository        # emits SCXCode-0.1.2.vsix
+code-insiders --install-extension SCXCode-0.1.2.vsix             # or 'code' for stable
 ```
 
 Then run one of the installer helpers to seed the HKCU env vars from
@@ -69,7 +99,7 @@ the Kritical secrets folder:
 pwsh ../install/Install-KritScxVsCode.ps1 -Mode Install
 ```
 
-### Path 2 — Visual Studio Marketplace / OpenVSX
+### Path 3 — Visual Studio Marketplace / OpenVSX
 
 Not yet published. See [`CHANGELOG.md`](CHANGELOG.md) `[Unreleased]` for progress.
 

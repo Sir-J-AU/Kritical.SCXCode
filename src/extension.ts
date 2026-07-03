@@ -12,6 +12,9 @@
 
 import * as vscode from 'vscode';
 import * as https from 'https';
+import * as fs from 'fs';
+import * as path from 'path';
+import { spawn } from 'child_process';
 
 interface ScxMessage { role: 'user' | 'assistant' | 'system'; content: string; }
 interface ScxCompletionRequest { model: string; messages: ScxMessage[]; max_tokens?: number; system?: string; }
@@ -53,7 +56,65 @@ function getConfig() {
     // .5165e — auto-context wiring
     autoContext: c.get<'off' | 'file' | 'file+selection' | 'workspace-tree'>('autoContext', 'file+selection'),
     autoContextMaxChars: c.get<number>('autoContextMaxChars', 8000),
+    // .5165h — provider selection + claude-code CLI fallback path
+    provider: c.get<'auto' | 'scx-native' | 'claude-code-cli'>('provider', 'auto'),
+    claudeCliPath: c.get<string>('claudeCliPath', 'claude'),
   };
+}
+
+// .5165h — resolve claude CLI path. cmd.exe doesn't inherit git-bash PATH so
+// spawn('claude', shell:true) can fail with "not recognized". Walk canonical
+// npm-global install locations when the configured path isn't a file.
+function resolveClaudeCliPath(configured: string): string {
+  // If configured path is absolute or has a slash AND exists as a file, use it.
+  if (configured.includes('/') || configured.includes('\\')) {
+    try { if (fs.existsSync(configured)) return configured; } catch { /* ignore */ }
+  }
+  if (process.platform !== 'win32') return configured;
+  // On Windows, walk npm-global candidates.
+  const candidates: string[] = [];
+  const appdata = process.env.APPDATA;
+  if (appdata) {
+    candidates.push(path.join(appdata, 'npm', 'claude.cmd'));
+    candidates.push(path.join(appdata, 'npm', 'claude.exe'));
+  }
+  const userProf = process.env.USERPROFILE;
+  if (userProf) {
+    candidates.push(path.join(userProf, 'AppData', 'Roaming', 'npm', 'claude.cmd'));
+    candidates.push(path.join(userProf, 'AppData', 'Local', 'npm', 'claude.cmd'));
+  }
+  for (const c of candidates) {
+    try { if (fs.existsSync(c)) return c; } catch { /* ignore */ }
+  }
+  return configured; // let spawn fail with a real message
+}
+
+// .5165h — claude-code CLI local fallback. Uses local claude session auth
+// (no API key needed). Invokes `claude --print --output-format text <prompt>`.
+async function askClaudeCodeCli(prompt: string, systemPrompt: string): Promise<string> {
+  const cfg = getConfig();
+  const fullPrompt = systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt;
+  const resolvedPath = resolveClaudeCliPath(cfg.claudeCliPath);
+  return new Promise((resolve, reject) => {
+    const child = spawn(resolvedPath, ['--print', '--output-format', 'text', fullPrompt], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      shell: process.platform === 'win32', // .cmd shim on Windows
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (c) => (stdout += c));
+    child.stderr.on('data', (c) => (stderr += c));
+    child.on('error', (e) => reject(new Error(`claude CLI spawn failed: ${e.message} (configured='${cfg.claudeCliPath}', resolved='${resolvedPath}')`)));
+    child.on('close', (code) => {
+      if (code === 0) resolve(stdout.trim());
+      else reject(new Error(`claude CLI exit=${code}: ${stderr.slice(0, 500) || stdout.slice(0, 500)}`));
+    });
+    // 90 s cap so a hung claude subprocess doesn't freeze the chat view
+    setTimeout(() => {
+      try { child.kill('SIGTERM'); } catch { /* ignore */ }
+      reject(new Error('claude CLI timeout after 90s'));
+    }, 90_000);
+  });
 }
 
 // .5165e — auto-context builder. Injects active editor file + selection + cursor
@@ -151,12 +212,36 @@ class ScxHttpError extends Error {
 
 // Failover: rotate SCX keys first (same daily-limit → different quotas),
 // then rotate models. On 429/5xx walk the (model, key) grid.
+// .5165h — final fallback: claude-code CLI (local session, no API key).
 async function scxPostWithFailover(messages: ScxMessage[], maxTokens = 800): Promise<{ res: ScxCompletionResponse; modelUsed: string; keyIndex: number; attempts: string[] }> {
   const cfg = getConfig();
   const tried: string[] = [];
+  let lastErr: unknown;
+
+  // Provider = claude-code-cli: skip SCX entirely.
+  if (cfg.provider === 'claude-code-cli') {
+    const promptText = messages.map((m) => `${m.role}: ${m.content}`).join('\n\n');
+    tried.push('claude-code-cli (direct)');
+    const text = await askClaudeCodeCli(promptText, cfg.systemPrompt);
+    return {
+      res: {
+        id: `claude-cli-${Date.now()}`,
+        type: 'message',
+        role: 'assistant',
+        content: [{ type: 'text', text }],
+        model: 'claude-code-cli',
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 0, output_tokens: 0 },
+      },
+      modelUsed: 'claude-code-cli',
+      keyIndex: 0,
+      attempts: tried,
+    };
+  }
+
+  // Provider = auto or scx-native: try SCX first.
   const modelChain = [cfg.defaultModel, ...cfg.fallbackChain.filter((m) => m !== cfg.defaultModel)];
   const keys = cfg.apiKeys.length > 0 ? cfg.apiKeys : [cfg.apiKey];
-  let lastErr: unknown;
   for (const model of modelChain) {
     for (let ki = 0; ki < keys.length; ki++) {
       const k = keys[ki];
@@ -174,6 +259,33 @@ async function scxPostWithFailover(messages: ScxMessage[], maxTokens = 800): Pro
       }
     }
   }
+
+  // .5165h — every SCX (model, key) combo exhausted. Fall through to claude-code CLI
+  // when provider=auto so operator can chat during SCX daily-limit dry-outs.
+  if (cfg.provider === 'auto') {
+    tried.push('claude-code-cli (fallback after SCX exhaustion)');
+    try {
+      const promptText = messages.map((m) => `${m.role}: ${m.content}`).join('\n\n');
+      const text = await askClaudeCodeCli(promptText, cfg.systemPrompt);
+      return {
+        res: {
+          id: `claude-cli-${Date.now()}`,
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'text', text }],
+          model: 'claude-code-cli',
+          stop_reason: 'end_turn',
+          usage: { input_tokens: 0, output_tokens: 0 },
+        },
+        modelUsed: 'claude-code-cli',
+        keyIndex: 0,
+        attempts: tried,
+      };
+    } catch (e) {
+      throw new Error(`SCX exhausted, claude-code fallback also failed: ${(e as Error).message}\nSCX attempts: ${tried.slice(0, -1).join(', ')}`);
+    }
+  }
+
   throw lastErr ?? new Error('failover exhausted (unknown reason)');
 }
 
@@ -321,9 +433,11 @@ function chatHtml(): string {
 <title>Kritical SCXCode</title>
 <style nonce="${nonce}">
 :root {
+  /* Canonical Kritical brand palette per Kritical-Branding/public/brand-spec.json (2026-06-25).
+     Supersedes earlier #F2B500 gold — brand-spec confirmed secondary = #15AFD1 cyan. */
   --kr-primary: #13365C;
-  --kr-accent: #F2B500;
-  --kr-user-bg: #F2B500;
+  --kr-accent: #15AFD1;
+  --kr-user-bg: #15AFD1;
   --kr-bg: var(--vscode-editor-background, #1e1e1e);
   --kr-fg: var(--vscode-editor-foreground, #e5e5e5);
   --kr-panel: var(--vscode-editorWidget-background, #252526);
@@ -341,7 +455,7 @@ body { font-family: var(--vscode-font-family, system-ui, sans-serif); margin: 0;
 .top .clear-btn:hover { background: rgba(255,255,255,0.15); }
 #chat { padding: 12px; overflow-y: auto; height: calc(100vh - 130px); }
 .msg { padding: 8px 10px; margin: 6px 0; border-radius: 5px; max-width: 92%; word-wrap: break-word; }
-.msg.user { background: var(--kr-user-bg); color: #121212; margin-left: auto; }
+.msg.user { background: var(--kr-user-bg); color: #ffffff; margin-left: auto; }
 .msg.assistant { background: var(--kr-panel); color: var(--kr-fg); border: 1px solid var(--kr-border); }
 .msg.error { background: var(--kr-danger); color: #fff; }
 .msg.assistant pre { background: rgba(0,0,0,0.3); padding: 6px 8px; border-radius: 4px; overflow-x: auto; margin: 4px 0; font-family: var(--kr-mono); font-size: 12px; position: relative; }
@@ -491,7 +605,7 @@ window.addEventListener('message', (e) => {
   }
 });
 </script>
-<div class="footer">© Kritical Pty Ltd · v0.1.0</div>
+<div class="footer">© Kritical Pty Ltd · v0.1.2 · canonical brand · claude-code fallback</div>
 </body></html>`;
 }
 
