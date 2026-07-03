@@ -19,7 +19,8 @@
         'New-KritScxEmbedding',
         'Get-KritScxStatus',
         'Install-KritScxKey',
-        'Uninstall-KritScxKey'
+        'Uninstall-KritScxKey',
+        'Switch-KritScxKey'
     )
 
     CmdletsToExport   = @()

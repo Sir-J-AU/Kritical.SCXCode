@@ -129,9 +129,10 @@ function Invoke-KritScx {
 function Invoke-KritScxChat {
     <#
     .SYNOPSIS
-        Send one user message, get plain-text reply. Two-dimensional failover:
-        (1) rotate SCX keys, (2) rotate models. On any 429/5xx, try next key first
-        with same model, then next model with the primary key, etc.
+        Send one user message, get plain-text reply. Auto-failover across FallbackChain on 429/5xx.
+        On rate-limit, tries `Switch-KritScxKey` once to swap to the next healthy key file,
+        then retries. Uses HKCU SCX_API_KEY only — key rotation is a management operation, not
+        a hot-path grid walk.
     .EXAMPLE
         Invoke-KritScxChat -Prompt 'what is 47*3?'
     #>
@@ -140,39 +141,118 @@ function Invoke-KritScxChat {
         [Parameter(Mandatory, Position = 0)][string]$Prompt,
         [string]$Model,
         [int]$MaxTokens = 1200,
-        [string]$System
+        [string]$System,
+        [switch]$NoAutoSwitch
     )
     $cfg = Get-KritScxConfig
     if (-not $Model) { $Model = $cfg.DefaultModel }
-    $modelChain = @($Model) + @($cfg.FallbackChain | Where-Object { $_ -ne $Model })
-    $keyChain = if ($cfg.Keys.Count -gt 0) { $cfg.Keys } else { @($null) }
+    $chain = @($Model) + @($cfg.FallbackChain | Where-Object { $_ -ne $Model })
     $attempts = @()
     $lastErr = $null
-    # .5165e — key first, model second. Try each (key, model) pair in order.
-    foreach ($m in $modelChain) {
-        foreach ($k in $keyChain) {
-            $keyLabel = if ($k -and $k.Length -ge 8) { $k.Substring(0, 8) } else { '(default)' }
-            $attempts += "$m via $keyLabel"
-            try {
-                $r = Invoke-KritScx -Model $m -Messages @(@{ role = 'user'; content = $Prompt }) -MaxTokens $MaxTokens -System:$System -ApiKey $k
-                $text = ($r.content | ForEach-Object { $_.text }) -join ''
-                return [pscustomobject]@{
-                    Model      = $m
-                    KeyPrefix  = $keyLabel
-                    Text       = $text
-                    InTokens   = $r.usage.input_tokens
-                    OutTokens  = $r.usage.output_tokens
-                    Attempts   = $attempts
-                    Raw        = $r
-                }
-            } catch {
-                $lastErr = $_.TargetObject
-                if ($lastErr.IsRateLimit -or $lastErr.IsServerError) { continue }
-                throw $_
+    $switched = $false
+    foreach ($m in $chain) {
+        $attempts += $m
+        try {
+            $r = Invoke-KritScx -Model $m -Messages @(@{ role = 'user'; content = $Prompt }) -MaxTokens $MaxTokens -System:$System
+            $text = ($r.content | ForEach-Object { $_.text }) -join ''
+            return [pscustomobject]@{
+                Model     = $m
+                Text      = $text
+                InTokens  = $r.usage.input_tokens
+                OutTokens = $r.usage.output_tokens
+                Attempts  = $attempts
+                Raw       = $r
             }
+        } catch {
+            $lastErr = $_.TargetObject
+            # .5165f — on rate-limit, swap HKCU key once + retry current model.
+            if ($lastErr.IsRateLimit -and -not $switched -and -not $NoAutoSwitch) {
+                Write-Verbose 'Rate limit — trying Switch-KritScxKey'
+                $r2 = Switch-KritScxKey
+                if ($r2.Switched) {
+                    $switched = $true
+                    $attempts += "$m (post-key-switch)"
+                    try {
+                        $r = Invoke-KritScx -Model $m -Messages @(@{ role = 'user'; content = $Prompt }) -MaxTokens $MaxTokens -System:$System
+                        $text = ($r.content | ForEach-Object { $_.text }) -join ''
+                        return [pscustomobject]@{
+                            Model     = $m
+                            Text      = $text
+                            InTokens  = $r.usage.input_tokens
+                            OutTokens = $r.usage.output_tokens
+                            Attempts  = $attempts
+                            Raw       = $r
+                        }
+                    } catch { $lastErr = $_.TargetObject }
+                }
+            }
+            if ($lastErr.IsRateLimit -or $lastErr.IsServerError) { continue }
+            throw $_
         }
     }
     throw ("Failover exhausted (tried {0}): {1}" -f ($attempts -join ' -> '), $lastErr.Body)
+}
+
+function Switch-KritScxKey {
+    <#
+    .SYNOPSIS
+        Rotate HKCU SCX_API_KEY to the next healthy key file in the secrets dir.
+    .DESCRIPTION
+        Reads every scx-*apiKey*.txt (and scx-benApiKey / scx-previousApiKeyPreBenSwitch)
+        under the Kritical secrets dir. Skips the one currently in HKCU. Tests each
+        candidate with a 20-token /v1/messages ping. First to respond 200 (or any non-429
+        auth-valid response) becomes the new HKCU SCX_API_KEY. Returns which key was picked.
+
+        Files must be exactly 39-char keys (starts with 'sk-scx-'). Files > 100 chars or
+        with 'anthropicCompatible' in the name are treated as narrative blobs and skipped.
+    .PARAMETER SecretsDir
+        Kritical secrets root. Default: OneDrive Github-SecretsOutsideOfGitRepos.
+    .EXAMPLE
+        Switch-KritScxKey
+        Switch-KritScxKey -Verbose
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [string]$SecretsDir = 'C:\Users\joshl\OneDrive - Kritical Pty Ltd\Github-SecretsOutsideOfGitRepos'
+    )
+    if (-not (Test-Path $SecretsDir)) { throw "SecretsDir not found: $SecretsDir" }
+
+    $currentKey = [Environment]::GetEnvironmentVariable('SCX_API_KEY', 'User')
+    $candidates = Get-ChildItem -LiteralPath $SecretsDir -Filter 'scx-*.txt' -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -notlike '*anthropicCompatible*' } |
+        ForEach-Object {
+            $raw = (Get-Content -LiteralPath $_.FullName -Raw).Trim()
+            if ($raw.Length -eq 39 -and $raw.StartsWith('sk-scx-')) {
+                [pscustomobject]@{ File = $_.Name; Key = $raw; Prefix = $raw.Substring(0, 8) }
+            }
+        } | Sort-Object File
+
+    if (-not $candidates) { return [pscustomobject]@{ Switched = $false; Reason = 'no candidate keys in secrets dir' } }
+
+    $others = $candidates | Where-Object { $_.Key -ne $currentKey }
+    if (-not $others) { return [pscustomobject]@{ Switched = $false; Reason = 'only one key available (already in HKCU)'; Current = $candidates[0].Prefix } }
+
+    Write-Verbose "candidates: $($candidates.Prefix -join ', '); current: $($currentKey.Substring(0, 8))"
+
+    foreach ($cand in $others) {
+        Write-Verbose "probing $($cand.File) ($($cand.Prefix))..."
+        try {
+            $probe = Invoke-KritScx -Model 'MiniMax-M2.7' -Messages @(@{ role = 'user'; content = 'reply just OK' }) -MaxTokens 20 -ApiKey $cand.Key
+            if ($PSCmdlet.ShouldProcess("HKCU SCX_API_KEY", "swap to $($cand.File)")) {
+                [Environment]::SetEnvironmentVariable('SCX_API_KEY', $cand.Key, 'User')
+            }
+            return [pscustomobject]@{ Switched = $true; File = $cand.File; Prefix = $cand.Prefix; ProbeVerdict = 'OK' }
+        } catch {
+            $err = $_.TargetObject
+            if ($err -and $err.IsRateLimit) {
+                Write-Verbose "  429 (this key also spent)"
+                continue
+            }
+            Write-Verbose "  non-429 error: $($err.Message ?? $_.Exception.Message)"
+            continue
+        }
+    }
+    return [pscustomobject]@{ Switched = $false; Reason = 'all candidate keys 429 or errored'; TriedFiles = ($others.File) }
 }
 
 # ────────────────────────────────────────────────────────────────
@@ -236,13 +316,13 @@ function New-KritScxEmbedding {
     #>
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)][string[]]$Input,
+        [Parameter(Mandatory)][string[]]$Texts,
         [string]$Model = 'E5-Mistral-7B-Instruct'
     )
     $cfg = Get-KritScxConfig
     $key = [Environment]::GetEnvironmentVariable('SCX_API_KEY', 'User')
     if (-not $key) { throw 'SCX_API_KEY not set.' }
-    $body = @{ model = $Model; input = $Input } | ConvertTo-Json -Depth 5
+    $body = @{ model = $Model; input = $Texts } | ConvertTo-Json -Depth 5
     $r = Invoke-RestMethod -Method Post -Uri "$($cfg.BaseUrl)/v1/embeddings" -Headers @{ 'x-api-key' = $key; 'content-type' = 'application/json' } -Body $body -TimeoutSec 60
     $r.data
 }
@@ -316,4 +396,4 @@ Set-Alias -Name scx-chat   -Value Invoke-KritScxChat -Scope Global
 Set-Alias -Name scx-models -Value Get-KritScxModels  -Scope Global
 Set-Alias -Name scx-test   -Value Test-KritScxConnection -Scope Global
 
-Export-ModuleMember -Function Invoke-KritScx, Invoke-KritScxChat, Get-KritScxModels, Get-KritScxConfig, Set-KritScxConfig, Test-KritScxConnection, New-KritScxEmbedding, Get-KritScxStatus, Install-KritScxKey, Uninstall-KritScxKey -Alias scx, scx-chat, scx-models, scx-test
+Export-ModuleMember -Function Invoke-KritScx, Invoke-KritScxChat, Get-KritScxModels, Get-KritScxConfig, Set-KritScxConfig, Test-KritScxConnection, New-KritScxEmbedding, Get-KritScxStatus, Install-KritScxKey, Uninstall-KritScxKey, Switch-KritScxKey -Alias scx, scx-chat, scx-models, scx-test

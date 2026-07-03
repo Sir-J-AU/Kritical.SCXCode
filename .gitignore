@@ -4,3 +4,5 @@ receipts/
 *.tmp
 .DS_Store
 .vscode/settings.json
+src/out/
+src/node_modules/
