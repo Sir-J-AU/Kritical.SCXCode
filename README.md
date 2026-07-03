@@ -157,9 +157,7 @@ pwsh ./install/Install-KritScxVsCode.ps1 -Mode Remove
 - **Anthropic Claude Code CLI** — https://claude.com/claude-code (proprietary, native Max-plan path)
 
 Per Kritical HARD RULE 20 — no LLM inference via API key from this codebase.
-SCX is EXPLICITLY exempt: SCX billing IS native to the operator's SCX plan (per
-[[scx-ben-key-preferred]] memory pin). No Anthropic API key. No OpenAI API key.
-Only SCX key HKCU + native Claude Code / Codex CLI plans.
+SCX API Required: Configuree SCX key HKCU 
 
 ## License
 
