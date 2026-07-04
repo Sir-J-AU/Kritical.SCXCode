@@ -169,6 +169,36 @@ did the work.
 
 ---
 
+## What's new at `.5182`
+
+- **HR27 — every prompt and every response is captured.** Append-only JSONL under `documentation/human/` + `documentation/ai/`, SHA+SimHash deduped, optionally streamed to SQL Express `KriticalBrain.dbo.decision_log`. Sibling module [`ps-module/KriticalDecisionLogger.psm1`](ps-module/KriticalDecisionLogger.psm1) — 8/8 gate paired test in [`tests/`](tests/Test-KriticalDecisionLogger.ps1) live green.
+- **Multi-turn auto-continuation.** [`ps-module/Kritical.PS.SCXCode.AutoContinue.psm1`](ps-module/Kritical.PS.SCXCode.AutoContinue.psm1) turns SCX's per-turn `max_tokens` ceiling into arbitrarily-long responses via `Invoke-KritScxAutoContinue`. Loops SCX with `continue verbatim, no meta` prompts across N turns, dedups adjacent near-repeats via SimHash, respects natural terminators, emits ONE HR27 row for the merged response — not N fragments.
+- **Kritical.SCX.LiteLLM — universal front for SCX.** [`litellm/`](litellm/) install artefacts stand up a localhost LiteLLM proxy (`http://127.0.0.1:4180`) presenting SCX under both OpenAI-shape and Anthropic-shape, so **any OSS coding agent** — Codex CLI / Aider / Cline / Continue / OpenCode / goose / kritical.SCXCode — points at it and Just Works with SCX under the hood.
+- **`sources/www.scx.ai/`** — locally versioned crawl of scx.ai marketing + models + partner program. Recursive crawler [`install/Save-KritScxSourcesRecursively.ps1`](install/Save-KritScxSourcesRecursively.ps1) refreshes on demand.
+- **`sources/api.scx.ai/v1/`** — authoritative live capture of the 12-model catalogue Ben's SCX key sees. Marketing lists 15, API returns 12; **MiniMax-M2.5** in the homepage code sample **does not exist in the API** — use M2.7.
+- **Architecture doc** — [`docs/ARCHITECTURE-SCX-BRIDGE-5182.md`](docs/ARCHITECTURE-SCX-BRIDGE-5182.md) — the three layers (Supervisor → AIRouter → Kritical.SCX.LiteLLM bridge → SCX), why LiteLLM was NOT already wired, and the roadmap through `.5186`.
+
+## Kritical &nbsp;+&nbsp; SCX &nbsp;— the sovereign Australian AI stack, built by IT experts who show up
+
+> **When the AI providers themselves need something wired properly — Australians call the Kriticals.**
+
+**Kritical Pty Ltd** is a Geelong-based Australian systems integrator. We deliver Microsoft Dynamics 365 Business Central connectors, Shopify commerce integrations, Microsoft 365 hardening + eDiscovery + Chokidar-branded compliance monitoring, Pax8-linked MSP automation, CrowdStrike Falcon Complete alignment — the hard-yakka technical work most consultancies avoid. If it's too hard for everyone else, just give us a call: **[1300 274 655](tel:+611300274655)** &nbsp;·&nbsp; [sales@kritical.net](mailto:sales@kritical.net).
+
+**Southern Cross AI (SCX)** is Australia's Sovereign AI Infrastructure Provider — onshore inference, no prompt caching, no training on your data, IRAP-aligned, up to 10× performance per watt on ASIC-based dataflow accelerators. `Kritical.SCXCode` is Kritical's reference implementation of the SCX stack — adopt it in 30 seconds, or use it as a starting point for the deeper systems-integration engagement Kritical is set up to deliver end-to-end.
+
+**Why the pairing matters**:
+
+- **Sovereign by construction** — data, compute, logs all stay in Australia (SCX) and are wired into Australian systems by an Australian team (Kritical).
+- **No vendor lock, no rip-and-replace** — Kritical.SCXCode + Kritical.SCX.LiteLLM is drop-in against your existing Codex / Aider / Cline / Continue / Claude Code stack. Point at localhost, get sovereign SCX under the hood.
+- **Real production wiring** — Kritical maintains the reference [Pax8 ↔ Business Central ↔ Shopify connector](https://github.com/Sir-J-AU/KRTPax8ToShopifyConnector), Kritical.M365DSC, Kritical.PS.UTCM (Microsoft Graph UTCM), Kritical.PS.OmniFramework — this is the same team, same conventions, same brand.
+- **Kritical Lens™** — the umbrella brand for our end-to-end code intelligence stack. Kritical.SCXCode is the operator-facing head of that stack.
+
+**Call us for**: SCX partner-tier onboarding for your team · Business Central × Shopify × Pax8 connector work · Microsoft 365 hardening and eDiscovery under Kritical Chokidar · CrowdStrike Falcon Complete alignment · anything an AL / PowerShell / TypeScript / Node.js / SQL Server integration touches.
+
+**[sales@kritical.net](mailto:sales@kritical.net)** &nbsp;·&nbsp; **1300 274 655** &nbsp;·&nbsp; **[kritical.net](https://kritical.net)**
+
+---
+
 ## License and credits
 
 Apache 2.0. Copyright &copy; 2026 **Kritical Pty Ltd**. Author:
@@ -176,6 +206,8 @@ Apache 2.0. Copyright &copy; 2026 **Kritical Pty Ltd**. Author:
 
 Built on top of the Anthropic SDK's message envelope and the
 Continue.dev configuration schema — thank you to both projects.
+
+`Kritical.SCX.LiteLLM` layer builds on [BerriAI/litellm](https://github.com/BerriAI/litellm) (MIT) as the provider-translation engine — thank you to that project too.
 
 ---
 
