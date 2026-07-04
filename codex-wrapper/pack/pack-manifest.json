@@ -1,0 +1,15 @@
+{
+  "_about": "Kritical Codex Pack — the additive overlay that 'flies over the top' of stock OpenAI Codex. HR29: additive only. It NEVER edits upstream codex files, so `codex` self-updates and the source clone `git pull`s with zero conflict. Applying = putting Kritical shims on PATH + registering the wrapper. Removing = deleting shims + restoring PATH. Nothing here touches ~/.codex/auth.json, config.toml model, or ANTHROPIC_BASE_URL.",
+  "pack_version": "0.1.0",
+  "wrapper": {
+    "ps1": "C:\\Users\\joshl\\OneDrive - Kritical Pty Ltd\\Github\\Kritical.SCXCode\\codex-wrapper\\kritical-codex.ps1",
+    "mjs": "C:\\Users\\joshl\\OneDrive - Kritical Pty Ltd\\Github\\Kritical.SCXCode\\codex-wrapper\\kritical-codex.mjs"
+  },
+  "bin_dir": "C:\\KriticalSCX\\bin",
+  "shims": [
+    { "name": "kcodex.cmd", "calls": "wrapper.ps1", "desc": "SCX-routed codex (falls back to stock codex when proxy down)" }
+  ],
+  "source_clone": "C:\\KriticalSCX\\codex-upstream",
+  "stock_codex_package": "@openai/codex",
+  "litellm_config": "C:\\Users\\joshl\\OneDrive - Kritical Pty Ltd\\Github\\Kritical.SCXCode\\litellm\\kritical-scx.config.yaml"
+}

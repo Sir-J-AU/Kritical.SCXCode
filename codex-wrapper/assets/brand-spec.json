@@ -1,0 +1,182 @@
+{
+  "_meta": {
+    "schemaVersion": "1.0.0",
+    "lastUpdated": "2026-06-25",
+    "inventoryDoc": "Github/KRTPax8ToShopifyConnector/reference/KRITICAL-BRAND-ASSET-INVENTORY-1507.md",
+    "canonicalBrandGuide": "Huzaifa OneDrive: Kritical Branding Folder/Kritical Brand Guide.pdf",
+    "note": "Single source of truth for Kritical brand spec. Consumed by Krit.OmniFramework (Write-KritBanner, future New-KritBrandedDocument) + per-customer proposal renderers. Any change here MUST be reflected in the inventory doc + Brand Guide PDF."
+  },
+  "entity": {
+    "legalName": "Kritical Pty Ltd",
+    "tradeName": "Kritical",
+    "trademark": "Kritical™",
+    "abn": "39 687 048 086",
+    "acn": "687 048 086",
+    "registeredAddress": "Level 4, 60 Moorabool Street, Geelong VIC 3220, Australia",
+    "registeredAddressShort": "Level 4 / 60 Moorabool St Geelong VIC 3220",
+    "governingLaw": "Victoria, Australia"
+  },
+  "contact": {
+    "phoneMain": "1300 274 655",
+    "phoneMainIntl": "+61 1300 274 655",
+    "mobileDirector": "041 111 4850",
+    "mobileDirectorIntl": "+61 04 1111 4850",
+    "emailSales": "sales@kritical.net",
+    "emailDirector": "joshua.finley@kritical.net",
+    "webPrimary": "https://kritical.net/",
+    "webAliases": ["https://kritical.au/", "https://kritical.net.au/"]
+  },
+  "messaging": {
+    "tagline": "Your last call. And your first move.",
+    "positioning": "Geelong & The Bellarine's IT & Cybersecurity Specialists",
+    "directorName": "Joshua Finley",
+    "directorTitle": "Director"
+  },
+  "colours": {
+    "primary": {
+      "kriticalDarkBlue": "#13365C"
+    },
+    "secondary": {
+      "kriticalCyan": "#15AFD1",
+      "lightGrey": "#D9D9D9"
+    },
+    "tertiary": {
+      "white": "#FFFFFF",
+      "mediumGrey": "#6D6E71",
+      "black": "#000000"
+    },
+    "_supersedes": "Earlier CLAUDE.md memory of #F2B500 gold as secondary was incorrect. Brand Guide PDF (canonical) confirms #15AFD1 cyan + #D9D9D9 light grey as the secondary palette."
+  },
+  "typography": {
+    "headings": {
+      "family": "Roboto",
+      "weight": "Regular",
+      "size_pt": 42
+    },
+    "subheadings": {
+      "family": "Assistant",
+      "weight": "Medium",
+      "weightNumeric": 500,
+      "size_pt": 21
+    },
+    "fontFamiliesAvailable": ["Roboto", "Assistant"],
+    "fontWeightsRoboto": ["Thin", "ExtraLight", "Light", "Regular", "Medium", "SemiBold", "Bold", "ExtraBold", "Black"],
+    "fontWeightsAssistant": ["ExtraLight", "Light", "Regular", "Medium", "SemiBold", "Bold", "ExtraBold"],
+    "fontsCanonicalPath": "Kritical-Branding/public/fonts/",
+    "fontsMasterPath": "Kritical/Kritcal-Internal/Branding/Kritical-Fonts/",
+    "fontLicence": "SIL Open Font Licence"
+  },
+  "logo": {
+    "rules": [
+      "Do not change proportion",
+      "Do not change alignment of text",
+      "Do not change position of logo icon relative to wordmark",
+      "Do not change weight of the logo"
+    ],
+    "variations": {
+      "originalSquare": {
+        "use": "Business cards / posters / formal collateral",
+        "canonicalPath": "Kritical-Branding/public/Original_Logo.png",
+        "masterPath": "Kritical/Kritcal-Internal/Branding/Kritical-Logos/PNG Logo Files/Original Logo.png"
+      },
+      "horizontal": {
+        "use": "Letterheads / email signatures / large+small spaces",
+        "canonicalPath": "Kritical-Branding/public/Horizontal_Logo.png",
+        "masterPath": "Github/KRTPax8ToShopifyConnector/KritContentBundle/Files/Horizontal_Logo.png"
+      },
+      "transparent": {
+        "use": "Dark backgrounds / overlays",
+        "canonicalPath": "Kritical-Branding/public/Transparent_Logo.png",
+        "masterPath": "Kritical/Kritcal-Internal/Branding/Kritical-Logos/PNG Logo Files/Transparent Logo.png"
+      },
+      "submark": {
+        "use": "Browser favicon / small UI / where full logo doesn't fit",
+        "canonicalPath": "Kritical-Branding/public/Logo_Symbol.png",
+        "masterPath": "Kritical/Kritcal-Internal/Branding/Kritical-Logos/PNG Logo Files/Original Logo Symbol.png"
+      },
+      "favicon": {
+        "use": "Browser tab",
+        "canonicalPath": "Kritical-Branding/public/Favicon.ico",
+        "masterPath": "Kritical/Kritcal-Internal/Branding/Kritical-Logos/Favicon/Favicon Original.ico"
+      }
+    },
+    "socialMediaKit": "Kritical/Kritcal-Internal/Branding/Kritical-Logos/Social Media Kit/ (Etsy / LinkedIn / Instagram / Twitter / Pinterest / YouTube / Zoom Backgrounds)"
+  },
+  "templates": {
+    "wordBase": {
+      "canonicalPath": "Kritical-Branding/public/Kritical-BaseTemplate-CURRENT.docx",
+      "teamSiteUrl": "https://kriticalptyltd.sharepoint.com/sites/internal.marketing/Shared Documents/Kritical/Branding/Kritical-BaseTemplate-CURRENT.docx",
+      "masterPath": "Kritical/Kritcal-Internal/Branding/Kritical-BaseTemplate-CURRENT.docx",
+      "use": "Pandoc --reference-doc for branded Word output"
+    },
+    "letterhead": {
+      "canonicalPath": "Kritical-Branding/public/Kritical_Letterhead.docx",
+      "sharepointUrl": "https://kriticalptyltd-my.sharepoint.com/personal/huzaifa_khalid_kritical_net/Documents/Kritical Branding Folder/Branding Materials/Kritical - Letterhead.docx",
+      "use": "Customer-facing letterhead — dedicated variant"
+    },
+    "brandGuide": {
+      "canonicalPath": "Kritical-Branding/public/Kritical_Brand_Guide.pdf",
+      "sharepointUrl": "https://kriticalptyltd-my.sharepoint.com/personal/huzaifa_khalid_kritical_net/Documents/Kritical Branding Folder/Kritical Brand Guide.pdf",
+      "use": "Canonical Brand Guide PDF — 13 MB — covers logo / colour / collateral / typography"
+    },
+    "emailSignature": {
+      "canonicalPath": "Kritical-Branding/public/email-signature.html",
+      "masterPath": "%APPDATA%/Microsoft/Signatures/J_Kritical-Director (Joshua.Finley@kritical.net).htm",
+      "use": "Outlook signature — embed at end of customer emails"
+    },
+    "asciiBanner": {
+      "canonicalPath": "Kritical-Branding/public/KriticalLogo.txt",
+      "use": "PowerShell module banner — embedded at top of every Kritical script / customer-facing PDF"
+    },
+    "msa": {
+      "html": "aaa-CUSTOMERS/1111-TEMPLATE/Kritical™_ Master Services Agreement - October 2025.html",
+      "markdown": "aaa-CUSTOMERS/1111-TEMPLATE/Kritical™_ Master Services Agreement - October 2025.md",
+      "pdf": "aaa-CUSTOMERS/1111-TEMPLATE/Kritical™_ Master Services Agreement - October 2025.pdf",
+      "version": "October 2025"
+    },
+    "invoice": {
+      "xlsx": "aaa-CUSTOMERS/BruceHorwood/TEMPLATE-KriticalInvoice-11November2025-JF01.xlsx",
+      "version": "11 November 2025"
+    },
+    "businessCard": {
+      "front": "https://kriticalptyltd-my.sharepoint.com/personal/huzaifa_khalid_kritical_net/Documents/Kritical Branding Folder/Branding Materials/Business Card - Front.png",
+      "back": "https://kriticalptyltd-my.sharepoint.com/personal/huzaifa_khalid_kritical_net/Documents/Kritical Branding Folder/Branding Materials/Business Card - Back.png"
+    }
+  },
+  "policies": {
+    "canonicalLocation": "Huzaifa OneDrive: Documents/Kritical Policies/Editable Files/",
+    "sharepointBaseUrl": "https://kriticalptyltd-my.sharepoint.com/personal/huzaifa_khalid_kritical_net/Documents/Kritical Policies/Editable Files/",
+    "effectiveDate": "2026-05-01",
+    "files": {
+      "legalNotice": "Kritical - Legal Notice.docx",
+      "privacyPolicy": "Kritical - Privacy Policy.docx",
+      "termsOfService": "Kritical - Terms of Service.docx",
+      "returnRefund": "Kritical - Return & Refund Policy.docx",
+      "shipping": "Kritical - Shipping Policy.docx"
+    }
+  },
+  "shopifyBanners": {
+    "canonicalPath": "Github/KRTPax8ToShopifyConnector/KritContentBundle/Files/",
+    "horizontalLogo": "Horizontal_Logo.png",
+    "rotationSet": ["Kritical_Banner.png", "Kritical_Banner_1.png", "Kritical_Banner_2.png", "Kritical_Banner_3.png", "Kritical_Banner_4.png", "Kritical_Banner_5.png", "Kritical_Banner_6.png", "Kritical_Banner_7.png", "Kritical_Banner_8.png", "Kritical_Banner_9.png", "Kritical_Banner_10.png", "Kritical_Banner_11.png", "Kritical_Banner_12.png", "Kritical_Banner_13.png", "Kritical_Banner_14.png", "Kritical_Banner_15.png", "Kritical_Banner_16.png", "Kritical_Banner_17.png", "Kritical_Banner_18.png", "Kritical_Banner_19.png", "Kritical_Banner_20.png"]
+  },
+  "sources": {
+    "sharepointSites": {
+      "internalMarketing": "https://kriticalptyltd.sharepoint.com/sites/internal.marketing/",
+      "internalMarketingBranding": "https://kriticalptyltd.sharepoint.com/sites/internal.marketing/Shared Documents/Kritical/Branding/",
+      "internalMarketingNotebook": "https://kriticalptyltd.sharepoint.com/sites/internal.marketing/SiteAssets/Kritical - Internal Marketing Notebook/"
+    },
+    "personalOneDrives": {
+      "huzaifaBrandFolder": "https://kriticalptyltd-my.sharepoint.com/personal/huzaifa_khalid_kritical_net/Documents/Kritical Branding Folder/",
+      "huzaifaPolicies": "https://kriticalptyltd-my.sharepoint.com/personal/huzaifa_khalid_kritical_net/Documents/Kritical Policies/",
+      "nickFalconMaterials": "https://kriticalptyltd-my.sharepoint.com/personal/nicholas_bazalicki_kritical_net/Documents/"
+    },
+    "driveIds": {
+      "joshuaPersonal": "b!oztufqch6U-9FiKFDFRggsoW1nWn5StGsYAoA356EVkD_M8-KsA5Rpxwfegg5Z7E",
+      "huzaifaPersonal": "b!t8bA4by-yUy6BpadKWvIXCq0xwcWUw5NieN6bCHq8XSUft1SU63eRqu0HdCP7ueO",
+      "nicholasPersonal": "b!eJcfbG3Q1EeUPN_9YbbKVcoW1nWn5StGsYAoA356EVkD_M8-KsA5Rpxwfegg5Z7E",
+      "internalMarketingSharedDocuments": "b!PvEBuBaXEEytH0a2jiRJZI0JqYI6hAZKmkDZlqOe84f5zF287X1JS4bIRQOQ3Z-D",
+      "internalMarketingSiteAssets": "b!PvEBuBaXEEytH0a2jiRJZI0JqYI6hAZKmkDZlqOe84dHyhm-yOMuSLRtzY2VzuT5"
+    }
+  }
+}
