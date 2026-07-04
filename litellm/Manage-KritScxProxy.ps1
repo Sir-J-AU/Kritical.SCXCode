@@ -22,7 +22,12 @@ $ErrorActionPreference='Continue'
 $TASK   = 'KriticalSCXProxy'
 $venvPy = 'C:\KriticalSCX\venv-litellm-test\Scripts\python.exe'
 $litellm= 'C:\KriticalSCX\venv-litellm-test\Scripts\litellm.exe'
-$config = 'C:\Users\joshl\OneDrive - Kritical Pty Ltd\Github\Kritical.SCXCode\litellm\kritical-scx.config.yaml'
+# SCX-only by default (HR1: native SCX tooling never uses OpenAI/Anthropic keys).
+# Traditional passthrough (anthropic/*, openai/*) loads ONLY when the operator
+# explicitly opts in via KRIT_SCX_ALLOW_TRADITIONAL_KEYS=1 (DANGER — breaks the pipeline).
+$ldir = 'C:\Users\joshl\OneDrive - Kritical Pty Ltd\Github\Kritical.SCXCode\litellm'
+$allowTrad = ([Environment]::GetEnvironmentVariable('KRIT_SCX_ALLOW_TRADITIONAL_KEYS','User') -eq '1') -or ($env:KRIT_SCX_ALLOW_TRADITIONAL_KEYS -eq '1')
+$config = Join-Path $ldir $(if ($allowTrad) { 'kritical-scx-traditional.config.yaml' } else { 'kritical-scx.config.yaml' })
 $runDir = 'C:\KriticalSCX\run'; $pidFile = Join-Path $runDir 'pids.json'
 New-Item -ItemType Directory -Force $runDir | Out-Null
 

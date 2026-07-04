@@ -109,16 +109,56 @@ model_list:
       mock_response: false
 
   # ==========================================================
-  # TRADITIONAL PROVIDER PASSTHROUGH — REMOVED from the SCX-only default (HR1).
-  # ----------------------------------------------------------
-  # Kritical SCX native tooling uses ONLY os.environ/SCX_API_KEY. It must
-  # NEVER use an OpenAI or Anthropic API key for any reason — doing so
-  # breaks the sovereign SCX pipeline (operator: "DANGER, days/weeks").
-  # The anthropic/* + openai/* slots (keyed to ANTHROPIC_API_KEY /
-  # OPENAI_API_KEY) now live ONLY in kritical-scx-traditional.config.yaml,
-  # which the proxy loads ONLY when KRIT_SCX_ALLOW_TRADITIONAL_KEYS=1.
-  # Default = SCX-only. Claude Code + stock Codex keep their OWN native
-  # auth entirely OUTSIDE this proxy (unchanged, HR29).
+  # ANTHROPIC PASSTHROUGH — real Claude, via operator's key
+  # ==========================================================
+  # Only active when ANTHROPIC_API_KEY is set in HKCU. Absent =
+  # rows below silently unroutable (LiteLLM returns 404 for the
+  # unresolved model, downstream client can pick another).
+  #
+  # HR29: this exists so operator can use Claude Code / Codex
+  # via LiteLLM without breaking their existing direct-Anthropic
+  # calls — same key, same models, one proxy hop.
+  # ==========================================================
+  - model_name: anthropic/claude-sonnet-4-6
+    litellm_params:
+      model: anthropic/claude-sonnet-4-6
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+  - model_name: anthropic/claude-opus-4-7
+    litellm_params:
+      model: anthropic/claude-opus-4-7
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+  - model_name: anthropic/claude-haiku-4-5
+    litellm_params:
+      model: anthropic/claude-haiku-4-5
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+  # ==========================================================
+  # OPENAI PASSTHROUGH — real GPT/Codex, via operator's key
+  # ==========================================================
+  # Only active when OPENAI_API_KEY is set in HKCU.
+  # ==========================================================
+  - model_name: openai/gpt-5
+    litellm_params:
+      model: openai/gpt-5
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: openai/gpt-5-codex
+    litellm_params:
+      model: openai/gpt-5-codex
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: openai/gpt-4o
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: openai/gpt-4o-mini
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
+
   # ==========================================================
   # GENERIC OPENAI-COMPATIBLE SLOT
   # ==========================================================
