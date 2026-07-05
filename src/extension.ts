@@ -41,7 +41,29 @@ function getOutputChannel(): vscode.OutputChannel {
   return _outputChannel;
 }
 // .5211 — real rotating key pointer (was hardcoded to apiKeys[1]/index 2, so 3+ keys never rotated).
-let _keyRotation = 0;
+// .5231b (re-hunt) — persist the pointer across VS Code restarts. It was module-scoped only, so a
+// crash / update / window reload reset it to 0, silently reverting the operator's manual "Switch SCX
+// key" selection (e.g. back onto an exhausted key1) with no indication. Mirror it to a tiny file in
+// ~/.kritical-scx so the last-selected key survives a restart. Best-effort: any I/O error is ignored
+// and the in-memory pointer still works.
+const _keyRotationStatePath = path.join(process.env.USERPROFILE || process.env.HOME || '', '.kritical-scx', 'key-rotation.json');
+function loadKeyRotation(): number {
+  try {
+    const raw = JSON.parse(fs.readFileSync(_keyRotationStatePath, 'utf8'));
+    const n = Number(raw && raw.rotation);
+    if (Number.isInteger(n) && n >= 0) { return n; }
+  } catch { /* no state yet / unreadable — start at 0 */ }
+  return 0;
+}
+function saveKeyRotation(rotation: number): void {
+  try {
+    fs.mkdirSync(path.dirname(_keyRotationStatePath), { recursive: true });
+    const tmp = `${_keyRotationStatePath}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify({ rotation, ts: new Date().toISOString() }));
+    fs.renameSync(tmp, _keyRotationStatePath);   // atomic — never leave a truncated state file
+  } catch { /* best effort — never break a key switch */ }
+}
+let _keyRotation = loadKeyRotation();
 
 function getConfig() {
   const c = vscode.workspace.getConfiguration('kritical.scxcode');
@@ -190,7 +212,14 @@ function publishCurrentModel(id: string): void {
   _lastPublishedModel = id;
   try {
     fs.mkdirSync(path.dirname(_currentModelPath), { recursive: true });
-    fs.writeFileSync(_currentModelPath, JSON.stringify({ id, ts: new Date().toISOString() }));
+    // .5231b (re-hunt) — write atomically: a plain writeFileSync that's interrupted (disk full, crash,
+    // permission flip mid-write) leaves current-model.json truncated ("{" only), which the codex wrapper
+    // then fails to JSON.parse and silently falls back to the default model instead of the operator's
+    // selection. Write to a temp sibling then rename (atomic on the same volume) so a reader only ever
+    // sees a complete file or the previous complete file — never a half-written one.
+    const tmp = `${_currentModelPath}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify({ id, ts: new Date().toISOString() }));
+    fs.renameSync(tmp, _currentModelPath);
   } catch { /* best effort — never break a chat send */ }
 }
 
@@ -797,6 +826,7 @@ async function cmdOpenChat(ctx: vscode.ExtensionContext) {
           panel.webview.postMessage({ type: 'error', error: 'Only one SCX key available (SCX_API_KEY). Set SCX_API_KEY_2..9 in HKCU or run Switch-KritScxKey.' });
         } else {
           _keyRotation = (_keyRotation + 1) % cfg.apiKeys.length;
+          saveKeyRotation(_keyRotation);   // .5231b (re-hunt) — persist so the selection survives restart
           panel.webview.postMessage({ type: 'keySwitched', newKeyIndex: _keyRotation + 1 });
         }
       } catch (e) {
@@ -2045,6 +2075,7 @@ class KriticalChatViewProvider implements vscode.WebviewViewProvider {
           // stable key list by _keyRotation, so we must NOT mutate process.env.SCX_API_KEY (that re-dedup
           // dropped the promoted key and shrank the set). Pointer advance = next key becomes primary.
           _keyRotation = (_keyRotation + 1) % cfg.apiKeys.length;
+          saveKeyRotation(_keyRotation);   // .5231b (re-hunt) — persist so the selection survives restart
           view.webview.postMessage({ type: 'keySwitched', newKeyIndex: _keyRotation + 1 });
         } catch (e) {
           view.webview.postMessage({ type: 'error', error: 'Key switch failed: ' + (e as Error).message });
