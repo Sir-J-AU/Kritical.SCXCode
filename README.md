@@ -137,11 +137,35 @@ descending — newest wins.
 
 | HKCU variable | Purpose |
 |---|---|
-| `SCX_API_KEY` | Active SCX API key (`sk-scx-...`) |
+| `SCX_API_KEY` | Active SCX API key (`sk-scx-...`) — **the only thing you must set** |
 | `SCX_API_KEY_2..9` | Backup keys for `Switch-KritScxKey` rotation |
-| `ANTHROPIC_BASE_URL` | `https://api.scx.ai` |
 | `KRIT_SCX_MODEL_DEFAULT` | e.g. `MiniMax-M2.7` |
 | `KRIT_SCX_FALLBACK_CHAIN` | `MiniMax-M2.7,MAGPiE,gpt-oss-120b` |
+
+> **`ANTHROPIC_BASE_URL` is deliberately NOT set at User/Machine scope.** The extension reads its own
+> `kritical.scxcode.baseUrl` (default `https://api.scx.ai`), so it routes to SCX **without** touching the
+> global env. That keeps the `claude` CLI talking direct to `api.anthropic.com` (HR29 — the layer is
+> additive, never intercepting). Only set `ANTHROPIC_BASE_URL` per-process if you deliberately want the
+> `claude` CLI itself routed through SCX.
+
+---
+
+## Enable Claude/AI via SCX — configure *only* SCXCode
+
+The extension is self-contained: it reads `SCX_API_KEY` from `HKCU` and defaults `baseUrl` to
+`https://api.scx.ai`. **Set `SCX_API_KEY` once and nothing else needs touching** — the `claude` CLI,
+`codex`, and every other agent keep working exactly as before (verified: `ANTHROPIC_BASE_URL` unset →
+`claude` direct; LiteLLM bound to `127.0.0.1:4180` only).
+
+| Task | Command | Notes |
+|---|---|---|
+| **Enable** | set `SCX_API_KEY` in HKCU; reload VS Code | extension uses it + its own baseUrl. No global env change. |
+| **SCX Codex** (in VS Code) | `✦ SCX Codex` button / `Kritical: Open SCX Codex` | opens `kritical-codex.ps1` in a terminal — SCX-branded, HR29-safe, **never touches your real `codex` config**. |
+| **Update the Codex pack from upstream** | `pwsh codex-wrapper/pack/Update-Codex.ps1` (`-DryRun` first) | pulls latest stock `@openai/codex` + re-applies the additive Kritical pack; auto-rolls-back stock Codex on failure. The pack flies over the top — upstream self-updates conflict-free. |
+| **Claude off-switch / backout** | `pwsh C:\KriticalSCX\safety\Restore-WorkingClaude.ps1` (`-Status` to look) | guarantees Claude Code talks direct to `api.anthropic.com`; undoes any SCX/LiteLLM routing. Safe to run anytime. |
+| **Verify nothing's intercepted** | `Restore-WorkingClaude.ps1 -Status` + `curl 127.0.0.1:4180/health/liveliness` | shows routing per scope + proxy liveness. |
+
+Full naming/branding of the stack: [BRANDING-REGISTER.md](BRANDING-REGISTER.md) (Kritical SCX™ · `Kritical.SCX.*`).
 
 ---
 
