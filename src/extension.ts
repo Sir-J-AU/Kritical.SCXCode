@@ -90,6 +90,40 @@ const SCX_MODEL_CATALOG: Array<{ id: string; detail: string }> = [
   { id: 'Qwen3-32B', detail: '32K · 119 languages' },
 ];
 
+// .5227 — LIVE model list from the SCX API with a JSON cache + preseed fallback.
+// On connect we GET {baseUrl}/v1/models, cache to ~/.kritical-scx/models-cache.json, and use it.
+// If the fetch fails we use the cache; if no cache, the hardcoded SCX_MODEL_CATALOG (preseed).
+let _liveModels: Array<{ id: string; detail: string }> | null = null;
+const _modelsCachePath = path.join(process.env.USERPROFILE || process.env.HOME || '', '.kritical-scx', 'models-cache.json');
+function getModelCatalog(): Array<{ id: string; detail: string }> {
+  if (_liveModels && _liveModels.length) { return _liveModels; }
+  try { if (fs.existsSync(_modelsCachePath)) { const c = JSON.parse(fs.readFileSync(_modelsCachePath, 'utf8')); if (Array.isArray(c) && c.length) { return c; } } } catch { /* ignore */ }
+  return SCX_MODEL_CATALOG; // preseed
+}
+function fetchLiveModels(): void {
+  const { apiKey, baseUrl } = getConfig();
+  if (!apiKey) { return; }
+  try {
+    const url = new URL('/v1/models', baseUrl);
+    const req = https.request({ method: 'GET', hostname: url.hostname, path: url.pathname, headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'authorization': `Bearer ${apiKey}` } }, (res) => {
+      let buf = ''; res.on('data', (c) => (buf += c));
+      res.on('end', () => {
+        try {
+          const j = JSON.parse(buf);
+          const ids: string[] = Array.isArray(j.data) ? j.data.map((m: any) => m.id).filter(Boolean) : (Array.isArray(j.models) ? j.models.map((m: any) => m.id || m).filter(Boolean) : []);
+          if (ids.length) {
+            const known = new Map(SCX_MODEL_CATALOG.map((m) => [m.id.toLowerCase(), m.detail]));
+            _liveModels = ids.map((id) => ({ id, detail: known.get(id.toLowerCase()) || 'live' }));
+            try { fs.mkdirSync(path.dirname(_modelsCachePath), { recursive: true }); fs.writeFileSync(_modelsCachePath, JSON.stringify(_liveModels)); } catch { /* ignore */ }
+          }
+        } catch { /* keep cache/preseed */ }
+      });
+    });
+    req.on('error', () => { /* keep cache/preseed */ });
+    req.end();
+  } catch { /* keep cache/preseed */ }
+}
+
 // .5213 — read-only MCP-server summary for the panel's 🔌 MCP button (Codex config.toml).
 function mcpSummary(): string {
   const lines: string[] = ['**MCP servers & tools**', ''];
@@ -400,6 +434,7 @@ async function scxMux(messages: ScxMessage[], concurrency: number, maxTokens: nu
 // ────────────────────────────────────────────────────────────────
 
 async function cmdTestConnection() {
+  fetchLiveModels(); // .5227 — refresh model cache on connect
   const cfg = getConfig();
   const out = getOutputChannel();
   out.show(true);
@@ -491,6 +526,42 @@ async function cmdAuditDiff() {
   await runChat('Audit the CURRENT git diff against Kritical HARD RULES from CLAUDE.md (never commit .env / real tokens / secrets; no bulk restore; no supervisor cross-invoke; test-dryrun before live). Emit REFUSED/OK per rule with one-line reason.');
 }
 
+// .5225 — the fuller command surface (the recurring "where are all the clickable options" gap).
+async function cmdNewChat() {
+  await vscode.commands.executeCommand('workbench.view.extension.kritical-scxcode');
+  vscode.window.showInformationMessage('Kritical SCXCode — use the Clear button in the panel to start a fresh chat.');
+}
+function cmdOpenSettings() {
+  vscode.commands.executeCommand('workbench.action.openSettings', 'kritical.scxcode');
+}
+function cmdManageMcp() {
+  const out = getOutputChannel(); out.show(true); out.appendLine(mcpSummary());
+  vscode.window.showInformationMessage('Kritical SCXCode — MCP servers listed in the Output panel. Toggle them in the Plugin Control Panel.');
+}
+async function cmdExplainFile() {
+  const ed = vscode.window.activeTextEditor;
+  if (!ed) { vscode.window.showWarningMessage('No active editor'); return; }
+  const text = ed.document.getText();
+  await runChat(`Explain this whole file in plain English: (1) purpose, (2) key functions + what each does, (3) dependencies, (4) anything risky.\n\n\`\`\`${ed.document.languageId}\n${text.slice(0, 20000)}\n\`\`\``);
+}
+async function cmdGenerateTests() {
+  const ed = vscode.window.activeTextEditor;
+  if (!ed) { vscode.window.showWarningMessage('No active editor'); return; }
+  const sel = ed.selection.isEmpty ? ed.document.getText() : ed.document.getText(ed.selection);
+  await runChat(`Generate a focused smoke/unit test for this ${ed.document.languageId} code. Cover happy path + one failure path + one boundary. Output only the test code.\n\n\`\`\`\n${sel.slice(0, 16000)}\n\`\`\``);
+}
+async function cmdMuxQuery() {
+  const q = await vscode.window.showInputBox({ title: 'Kritical SCXCode — Synthetic-Context Query', prompt: `Fan out to ${getConfig().concurrency} concurrent SCX streams and synthesise. Ask anything.` });
+  if (!q) return;
+  const out = getOutputChannel(); out.show(true);
+  out.appendLine(`\n[mux] ${q}`);
+  try {
+    const cfg = getConfig();
+    const { res, modelUsed, shards } = await scxMux([{ role: 'user', content: q }], cfg.concurrency, cfg.maxTokens);
+    out.appendLine(`[reply · ${modelUsed} · muxed ×${shards}]\n${res.content.map((c) => c.text).join('')}\n`);
+  } catch (e) { out.appendLine(`[error] ${(e as Error).message}`); }
+}
+
 async function runChat(prompt: string) {
   const out = getOutputChannel();
   out.show(true);
@@ -522,16 +593,18 @@ async function cmdOpenChat(ctx: vscode.ExtensionContext) {
   // which posts {type:'chat', text}). Result: scxPostWithFailover(undefined) → 400 → every
   // send in the panel failed. Now we maintain history here and read msg.text, mirroring the sidebar.
   const history: ScxMessage[] = [];
+  let attached = ''; // .5227 — panel now supports file/repo attach like the sidebar
   panel.webview.onDidReceiveMessage(async (msg) => {
     if (msg.type === 'chat') {
       history.push({ role: 'user', content: msg.text });
       try {
         const cfg = getConfig();
-        const ctxPrefix = buildAutoContext();
+        const ctxPrefix = buildAutoContext() + attached;
         const messagesForApi: ScxMessage[] = [...history];
         if (ctxPrefix && messagesForApi.length > 0) {
           messagesForApi[messagesForApi.length - 1] = { role: 'user', content: ctxPrefix + msg.text };
         }
+        attached = '';
         const { res, modelUsed, keyIndex, shards } = await scxMux(messagesForApi, cfg.concurrency, cfg.maxTokens);
         const replyText = res.content.map((c) => c.text).join('');
         history.push({ role: 'assistant', content: replyText });
@@ -545,9 +618,32 @@ async function cmdOpenChat(ctx: vscode.ExtensionContext) {
     } else if (msg.type === 'pickModel') {
       await vscode.commands.executeCommand('kritical.scxcode.pickModel');
       panel.webview.postMessage({ type: 'config', model: getConfig().defaultModel, keyCount: getConfig().apiKeys.length });
+    } else if (msg.type === 'setConfig') {
+      try { await vscode.workspace.getConfiguration('kritical.scxcode').update(msg.key, msg.value, vscode.ConfigurationTarget.Global); }
+      catch (e) { panel.webview.postMessage({ type: 'error', error: 'Setting update failed: ' + (e as Error).message }); }
+    } else if (msg.type === 'uploadFile') {
+      const picked = await vscode.window.showOpenDialog({ canSelectMany: false, openLabel: 'Attach to SCXCode' });
+      if (picked && picked[0]) {
+        try {
+          const bytes = await vscode.workspace.fs.readFile(picked[0]);
+          let content = Buffer.from(bytes).toString('utf8');
+          if (content.length > 24000) { content = content.slice(0, 24000) + '\n…(truncated)'; }
+          const name = picked[0].path.split('/').pop() || 'file';
+          attached += `\n\n## Attached file: ${name}\n\`\`\`\n${content}\n\`\`\`\n`;
+          panel.webview.postMessage({ type: 'fileAttached', name, chars: content.length });
+        } catch (e) { panel.webview.postMessage({ type: 'error', error: 'File read failed: ' + (e as Error).message }); }
+      }
+    } else if (msg.type === 'attachRepo') {
+      const found = await vscode.workspace.findFiles('**/*.{ts,js,py,ps1,psm1,al,md,json,yaml,yml}', '**/{node_modules,out,.git,.alpackages}/**', 80);
+      const rel = found.map((f) => vscode.workspace.asRelativePath(f)).sort();
+      attached += `\n\n## Workspace files (${rel.length}):\n${rel.join('\n')}\n`;
+      panel.webview.postMessage({ type: 'fileAttached', name: `repo (${rel.length} files)`, chars: attached.length });
+    } else if (msg.type === 'listMcp') {
+      panel.webview.postMessage({ type: 'notice', text: mcpSummary() });
     } else if (msg.type === 'config') {
       const cfg = getConfig();
-      panel.webview.postMessage({ type: 'config', model: cfg.defaultModel, keyCount: cfg.apiKeys.length, autoContext: cfg.autoContext });
+      panel.webview.postMessage({ type: 'config', model: cfg.defaultModel, models: getModelCatalog(), keyCount: cfg.apiKeys.length,
+        autoContext: cfg.autoContext, maxTokens: cfg.maxTokens, concurrency: cfg.concurrency, temperature: cfg.temperature, provider: cfg.provider });
     }
   });
   panel.webview.postMessage({ type: 'ready' });
@@ -645,11 +741,15 @@ body { font-family: var(--vscode-font-family, system-ui, sans-serif); margin: 0;
   </div>
 </div>
 <script nonce="${nonce}">
-const vscode = acquireVsCodeApi();
+// .5227 — tolerate running outside the VS Code host (static render / visual test harness): never hard-crash.
+const vscode = (typeof acquireVsCodeApi !== 'undefined') ? acquireVsCodeApi() : { postMessage: function () {}, getState: function () {}, setState: function () {} };
 const chat = document.getElementById('chat');
 const input = document.getElementById('in');
 const send = document.getElementById('send');
 const modelEl = document.getElementById('model');
+// .5227 — PRESEED the model dropdown at load so it is NEVER blank, even before the host sends
+// the (possibly live) model list. The config message then replaces these with the authoritative list.
+(${JSON.stringify(getModelCatalog())}).forEach(function (mo) { var o = document.createElement('option'); o.value = mo.id; o.textContent = mo.id + (mo.detail ? ' — ' + mo.detail : ''); modelEl.appendChild(o); });
 const clearBtn = document.getElementById('clear');
 let sessionInTokens = 0;
 let sessionOutTokens = 0;
@@ -777,7 +877,8 @@ window.addEventListener('message', (e) => {
   } else if (m.type === 'ready') {
     vscode.postMessage({ type: 'config' });
   } else if (m.type === 'config') {
-    if (Array.isArray(m.models) && modelEl.options.length === 0) {
+    if (Array.isArray(m.models) && m.models.length) {
+      modelEl.innerHTML = '';
       m.models.forEach(function (mo) { var o = document.createElement('option'); o.value = mo.id; o.textContent = mo.id + (mo.detail ? ' — ' + mo.detail : ''); modelEl.appendChild(o); });
     }
     if (m.model) modelEl.value = m.model;
@@ -803,7 +904,7 @@ window.addEventListener('message', (e) => {
 // the real defaultModel (and the '…' placeholder resolves).
 vscode.postMessage({ type: 'config' });
 </script>
-<div class="footer">© 2026 Kritical Pty Ltd · Kritical SCXCode v0.1.9</div>
+<div class="footer">© 2026 Kritical Pty Ltd · Kritical SCXCode v0.1.12</div>
 </body></html>`;
 }
 
@@ -910,7 +1011,7 @@ class KriticalChatViewProvider implements vscode.WebviewViewProvider {
         view.webview.postMessage({
           type: 'config',
           model: cfg.defaultModel,
-          models: SCX_MODEL_CATALOG,
+          models: getModelCatalog(),
           keyCount: cfg.apiKeys.length,
           autoContext: cfg.autoContext,
           maxTokens: cfg.maxTokens,
@@ -925,6 +1026,7 @@ class KriticalChatViewProvider implements vscode.WebviewViewProvider {
 }
 
 export function activate(context: vscode.ExtensionContext) {
+  fetchLiveModels(); // .5227 — refresh the model cache from the SCX API on startup (falls back to cache/preseed)
   const cmds: Array<[string, (...args: any[]) => any]> = [
     ['kritical.scxcode.openChat', () => cmdOpenChat(context)],
     ['kritical.scxcode.pickModel', cmdPickModel],
@@ -933,6 +1035,12 @@ export function activate(context: vscode.ExtensionContext) {
     ['kritical.scxcode.explainSelection', cmdExplainSelection],
     ['kritical.scxcode.refactorSelection', cmdRefactorSelection],
     ['kritical.scxcode.auditDiff', cmdAuditDiff],
+    ['kritical.scxcode.newChat', cmdNewChat],
+    ['kritical.scxcode.openSettings', cmdOpenSettings],
+    ['kritical.scxcode.manageMcp', cmdManageMcp],
+    ['kritical.scxcode.explainFile', cmdExplainFile],
+    ['kritical.scxcode.generateTests', cmdGenerateTests],
+    ['kritical.scxcode.muxQuery', cmdMuxQuery],
   ];
   for (const [id, fn] of cmds) {
     context.subscriptions.push(vscode.commands.registerCommand(id, fn));

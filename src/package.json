@@ -2,7 +2,7 @@
   "name": "SCXCode",
   "displayName": "Kritical SCXCode",
   "description": "SCX in VS Code the Kritical way — chat + inline complete + model picker + auto-failover for MiniMax-M2.7 / MAGPiE / gpt-oss-120b / DeepSeek-V3.1 / coder / gemma-4 / Qwen3 / Llama-4-Maverick.",
-  "version": "0.1.9",
+  "version": "0.1.12",
   "publisher": "kritical",
   "author": {
     "name": "Joshua Finley",
@@ -76,9 +76,59 @@
         "command": "kritical.scxcode.auditDiff",
         "title": "Kritical: Audit Current Diff vs CLAUDE.md HARD RULES",
         "category": "Kritical SCXCode"
+      },
+      {
+        "command": "kritical.scxcode.newChat",
+        "title": "Kritical: New Chat",
+        "category": "Kritical SCXCode",
+        "icon": "$(add)"
+      },
+      {
+        "command": "kritical.scxcode.openSettings",
+        "title": "Kritical: Open SCXCode Settings",
+        "category": "Kritical SCXCode",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "kritical.scxcode.manageMcp",
+        "title": "Kritical: Manage MCP Servers & Tools",
+        "category": "Kritical SCXCode",
+        "icon": "$(plug)"
+      },
+      {
+        "command": "kritical.scxcode.explainFile",
+        "title": "Kritical: Explain Active File",
+        "category": "Kritical SCXCode"
+      },
+      {
+        "command": "kritical.scxcode.generateTests",
+        "title": "Kritical: Generate Tests for Active File",
+        "category": "Kritical SCXCode"
+      },
+      {
+        "command": "kritical.scxcode.muxQuery",
+        "title": "Kritical: Synthetic-Context Query (mux N streams)",
+        "category": "Kritical SCXCode"
       }
     ],
     "menus": {
+      "view/title": [
+        {
+          "command": "kritical.scxcode.newChat",
+          "when": "view == kritical.scxcode.chat",
+          "group": "navigation@1"
+        },
+        {
+          "command": "kritical.scxcode.manageMcp",
+          "when": "view == kritical.scxcode.chat",
+          "group": "navigation@2"
+        },
+        {
+          "command": "kritical.scxcode.openSettings",
+          "when": "view == kritical.scxcode.chat",
+          "group": "navigation@3"
+        }
+      ],
       "editor/title": [
         {
           "command": "kritical.scxcode.openChat",
