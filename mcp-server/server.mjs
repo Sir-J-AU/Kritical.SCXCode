@@ -26,7 +26,7 @@ import { createInterface } from 'node:readline';
 import { stdin, stdout } from 'node:process';
 import https from 'node:https';
 
-const SCX_BASE = process.env.ANTHROPIC_BASE_URL || 'https://api.scx.ai';
+const SCX_BASE = process.env.KRIT_SCX_BASE_URL || 'https://api.scx.ai';
 const SCX_KEY = process.env.SCX_API_KEY;
 // .5165e — multi-key rotation pool
 const SCX_KEYS = [];

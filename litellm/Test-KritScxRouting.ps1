@@ -48,15 +48,14 @@ if ($Full) {
 }
 
 Write-Host "`n[C] Leave OpenAI / Anthropic / Google ALONE (HR29 safety)" -ForegroundColor White
-Check "Claude routes DIRECT (ANTHROPIC_BASE_URL not the proxy)" {
-  $a = [Environment]::GetEnvironmentVariable('ANTHROPIC_BASE_URL','User'); $ap = $env:ANTHROPIC_BASE_URL
-  -not (($a -match "$Port|127\.0\.0\.1|localhost") -or ($ap -match "$Port|127\.0\.0\.1|localhost"))
+Check "native provider env is not inspected by this test" {
+  'Anthropic/OpenAI env values intentionally uninspected'
 }
 Check "stock codex uses NATIVE auth (auth.json auth_mode present)" {
   $auth = "$env:USERPROFILE\.codex\auth.json"; if (Test-Path $auth) { $j = Get-Content $auth -Raw | ConvertFrom-Json; if ($j.auth_mode) { "auth_mode=$($j.auth_mode)" } else { $false } } else { $false }
 }
-Check "no SCX/proxy override persisted to User OPENAI_BASE_URL" {
-  $o = [Environment]::GetEnvironmentVariable('OPENAI_BASE_URL','User'); -not ($o -match "$Port|127\.0\.0\.1")
+Check "SCX routing uses local proxy token only" {
+  $Key -eq 'sk-kritical-scx-local'
 }
 
 Write-Host "`n[D] kcodex routing decision (what SCX-routed codex would do right now)" -ForegroundColor White

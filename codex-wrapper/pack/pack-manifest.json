@@ -1,14 +1,16 @@
 {
-  "_about": "Kritical Codex Pack — the additive overlay that 'flies over the top' of stock OpenAI Codex. HR29: additive only. It NEVER edits upstream codex files, so `codex` self-updates and the source clone `git pull`s with zero conflict. Applying = putting Kritical shims on PATH + registering the wrapper. Removing = deleting shims + restoring PATH. Nothing here touches ~/.codex/auth.json, config.toml model, or ANTHROPIC_BASE_URL.",
-  "pack_version": "0.1.0",
+  "_about": "Kritical.SCXCodex Pack — a compiled branded Codex package built from a disposable upstream OpenAI Codex worktree. Upstream source remains merge-clean: pull upstream, re-run Build-KriticalSCXCodex.ps1, and the overlay is re-applied. Nothing here reads, writes, removes, prints, or migrates native Anthropic/OpenAI/Codex provider keys or auth settings.",
+  "pack_version": "0.3.0",
   "wrapper": {
     "ps1": "C:\\Users\\joshl\\OneDrive - Kritical Pty Ltd\\Github\\Kritical.SCXCode\\codex-wrapper\\kritical-codex.ps1",
     "mjs": "C:\\Users\\joshl\\OneDrive - Kritical Pty Ltd\\Github\\Kritical.SCXCode\\codex-wrapper\\kritical-codex.mjs"
   },
   "bin_dir": "C:\\KriticalSCX\\bin",
-  "shims": [
-    { "name": "kcodex.cmd", "calls": "wrapper.ps1", "desc": "SCX-routed codex (falls back to stock codex when proxy down)" }
-  ],
+  "compiled_package_dir": "C:\\KriticalSCX\\dist\\Kritical.SCXCodex",
+  "compiled_entrypoint": "C:\\KriticalSCX\\dist\\Kritical.SCXCodex\\bin\\Kritical.SCXCodex.exe",
+  "build_root": "C:\\KriticalSCX\\build\\scxcodex",
+  "binary_name": "Kritical.SCXCodex.exe",
+  "legacy_shims": [],
   "source_clone": "C:\\KriticalSCX\\codex-upstream",
   "stock_codex_package": "@openai/codex",
   "litellm_config": "C:\\Users\\joshl\\OneDrive - Kritical Pty Ltd\\Github\\Kritical.SCXCode\\litellm\\kritical-scx.config.yaml"

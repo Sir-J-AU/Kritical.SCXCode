@@ -1,60 +1,47 @@
 <#
 .SYNOPSIS
-  Automated "merge + upgrade" for Codex: pull the latest stock Codex + refresh the source clone,
-  then re-apply the Kritical pack. Auto-rollback stock Codex on failure. HR29-safe.
+  Pull upstream Codex source and rebuild Kritical.SCXCodex.exe.
 
-  Flow: capture current version -> npm i -g @openai/codex@latest -> git pull source clone ->
-        re-heal pack -> verify `codex --version` + `kcodex` -> rollback to prior version if broken.
-
-.PARAMETER DryRun   Show what would happen; change nothing. (default off)
-.EXAMPLE  pwsh Update-Codex.ps1 -DryRun
-.EXAMPLE  pwsh Update-Codex.ps1
+.DESCRIPTION
+  This does not install or modify stock codex. It updates the upstream source clone,
+  applies the SCX branding overlay in a disposable worktree, recompiles, packages,
+  and verifies Kritical.SCXCodex.exe.
 #>
 [CmdletBinding()]
-param([switch]$DryRun, [string]$Manifest = "$PSScriptRoot\pack-manifest.json")
-$ErrorActionPreference = 'Continue'
-$m = Get-Content $Manifest -Raw | ConvertFrom-Json
-$pkg = $m.stock_codex_package
-$clone = $m.source_clone
+param(
+  [switch]$DryRun,
+  [string]$Manifest = "$PSScriptRoot\pack-manifest.json"
+)
 
-function Get-CodexVersion { try { (& codex --version 2>&1 | Select-Object -First 1) } catch { $null } }
+$ErrorActionPreference = 'Stop'
+$manifestData = Get-Content -LiteralPath $Manifest -Raw | ConvertFrom-Json
+$clone = $manifestData.source_clone
+$pack = Join-Path $PSScriptRoot 'Apply-KriticalCodexPack.ps1'
 
-Write-Host "=== Update-Codex ($(if($DryRun){'DRY RUN'}else{'LIVE'})) ===" -ForegroundColor Cyan
-$before = Get-CodexVersion
-Write-Host "current stock codex: $($before ?? '(not found)')"
-Write-Host "source clone       : $clone  (present: $(Test-Path (Join-Path $clone '.git')))"
+Write-Host "=== Update Kritical.SCXCodex from upstream ($(if($DryRun){'DRY RUN'}else{'LIVE'})) ===" -ForegroundColor Cyan
+Write-Host "source clone : $clone"
+Write-Host "entrypoint   : $($manifestData.compiled_entrypoint)"
+Write-Host "stock codex  : untouched"
+Write-Host "provider auth: native OpenAI/Anthropic/Codex settings unread + unchanged"
 
 if ($DryRun) {
   Write-Host "`n[DRY RUN] would run:" -ForegroundColor Magenta
-  Write-Host "  npm install -g $pkg@latest"
   Write-Host "  git -C `"$clone`" pull --ff-only"
-  Write-Host "  Apply-KriticalCodexPack.ps1 -Mode Heal"
-  Write-Host "  verify codex --version + kcodex ; rollback to '$before' on failure"
+  Write-Host "  Apply-KriticalCodexPack.ps1 -Mode Install"
+  Write-Host "  verify compiled branding inside Kritical.SCXCodex.exe"
   return
 }
 
-# 1) update stock codex (self-contained npm global)
-Write-Host "`n[1/4] npm install -g $pkg@latest ..." -ForegroundColor Yellow
-npm install -g "$pkg@latest" 2>&1 | Out-Host
-
-# 2) refresh source clone (never fails the run)
-if (Test-Path (Join-Path $clone '.git')) {
-  Write-Host "[2/4] git pull source clone ..." -ForegroundColor Yellow
-  git -C $clone pull --ff-only 2>&1 | Out-Host
-} else { Write-Host "[2/4] no source clone — skipping" }
-
-# 3) re-apply pack (heal shims/PATH)
-Write-Host "[3/4] re-applying Kritical pack ..." -ForegroundColor Yellow
-& (Join-Path $PSScriptRoot 'Apply-KriticalCodexPack.ps1') -Mode Heal -Manifest $Manifest
-
-# 4) verify + rollback
-Write-Host "[4/4] verifying ..." -ForegroundColor Yellow
-$after = Get-CodexVersion
-if (-not $after) {
-  Write-Host "  codex broken after update — ROLLING BACK to $before" -ForegroundColor Red
-  if ($before) { npm install -g "$pkg@$($before -replace '[^0-9\.]','')" 2>&1 | Out-Host }
-  Write-Host "  If Claude is affected in any way, run: C:\KriticalSCX\safety\Restore-WorkingClaude.ps1" -ForegroundColor Yellow
-} else {
-  Write-Host "  codex OK: $before -> $after" -ForegroundColor Green
-  Write-Host "  Emergency escape (any time): C:\KriticalSCX\safety\Restore-WorkingClaude.ps1" -ForegroundColor Gray
+if (-not (Test-Path -LiteralPath (Join-Path $clone '.git'))) {
+  throw "Upstream Codex source clone is missing: $clone"
 }
+
+Write-Host "`n[1/3] pulling upstream source clone ..." -ForegroundColor Yellow
+git -C $clone pull --ff-only
+if ($LASTEXITCODE -ne 0) { throw "git pull failed for $clone" }
+
+Write-Host "[2/3] rebuilding branded package ..." -ForegroundColor Yellow
+& $pack -Mode Install -Manifest $Manifest
+
+Write-Host "[3/3] verifying branded package ..." -ForegroundColor Yellow
+& (Join-Path $PSScriptRoot 'Build-KriticalSCXCodex.ps1') -Mode Verify -Manifest $Manifest

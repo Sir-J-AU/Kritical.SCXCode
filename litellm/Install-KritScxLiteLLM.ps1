@@ -92,15 +92,12 @@ function Get-KritLiteLLMPid {
 # ------------------------------------------------------------
 if ($Mode -eq 'Status') {
     $scxKey    = [Environment]::GetEnvironmentVariable('SCX_API_KEY','User')
-    $anthKey   = [Environment]::GetEnvironmentVariable('ANTHROPIC_API_KEY','User')
-    $openaiKey = [Environment]::GetEnvironmentVariable('OPENAI_API_KEY','User')
     $genKey    = [Environment]::GetEnvironmentVariable('GENERIC_API_KEY','User')
     $genBase   = [Environment]::GetEnvironmentVariable('GENERIC_API_BASE','User')
 
     Write-Host '--- Provider keys (HKCU) ---' -ForegroundColor Cyan
     Write-Host ('  SCX_API_KEY:        ' + $(if ($scxKey)    { 'present (len=' + $scxKey.Length + ')' }    else { 'ABSENT (SCX slot dormant)' })) -ForegroundColor $(if ($scxKey)    { 'Green' } else { 'Yellow' })
-    Write-Host ('  ANTHROPIC_API_KEY:  ' + $(if ($anthKey)   { 'present (len=' + $anthKey.Length + ')' }   else { 'ABSENT (Anthropic slot dormant)' })) -ForegroundColor $(if ($anthKey)   { 'Green' } else { 'Yellow' })
-    Write-Host ('  OPENAI_API_KEY:     ' + $(if ($openaiKey) { 'present (len=' + $openaiKey.Length + ')' } else { 'ABSENT (OpenAI slot dormant)' })) -ForegroundColor $(if ($openaiKey) { 'Green' } else { 'Yellow' })
+    Write-Host '  native provider keys: UNINSPECTED (SCX tooling never reads or reports Anthropic/OpenAI keys)' -ForegroundColor DarkGray
     Write-Host ('  GENERIC_API_KEY:    ' + $(if ($genKey)    { 'present (len=' + $genKey.Length + ')' }    else { 'ABSENT (Generic slot dormant)' })) -ForegroundColor $(if ($genKey)    { 'Green' } else { 'Yellow' })
     Write-Host ('  GENERIC_API_BASE:   ' + $(if ($genBase)   { $genBase }                                   else { 'ABSENT' })) -ForegroundColor $(if ($genBase)   { 'Green' } else { 'Yellow' })
     Write-Host ''
@@ -124,11 +121,7 @@ if ($Mode -eq 'Status') {
     Write-Host '--- HR29 kill switch (this proxy is ADDITIVE, not required) ---' -ForegroundColor Cyan
     Write-Host '  To stop this proxy and revert every downstream agent to direct-API calls:' -ForegroundColor Gray
     Write-Host '    pwsh ./Install-KritScxLiteLLM.ps1 -Mode Remove -IUnderstand' -ForegroundColor Yellow
-    Write-Host '  With the proxy off:' -ForegroundColor Gray
-    Write-Host '    - Claude Code -> api.anthropic.com direct (uses ANTHROPIC_API_KEY)' -ForegroundColor Gray
-    Write-Host '    - Codex CLI   -> api.openai.com direct  (uses OPENAI_API_KEY)' -ForegroundColor Gray
-    Write-Host '    - SCX PS mod  -> api.scx.ai direct       (uses SCX_API_KEY)' -ForegroundColor Gray
-    Write-Host '  Every agent above works with the proxy on OR off — the proxy just makes provider-swap easier.' -ForegroundColor Gray
+    Write-Host '  With the proxy off, SCX tooling stops routing through localhost. Native tools are not inspected or modified.' -ForegroundColor Gray
     return
 }
 
@@ -194,11 +187,8 @@ if ($Mode -eq 'Install') {
             Write-Host "[install] LiteLLM proxy HEALTHY at http://$BindHost`:$Port (PID $($p.Id))" -ForegroundColor Green
             Write-Host "[install] Log: $logFile" -ForegroundColor Gray
             Write-Host ''
-            Write-Host 'How to use from any coding agent:' -ForegroundColor Cyan
-            Write-Host '  Codex CLI     → export OPENAI_BASE_URL=http://127.0.0.1:4180 ; export OPENAI_API_KEY=sk-kritical-scx-local'
-            Write-Host '  Aider         → aider --openai-api-base http://127.0.0.1:4180 --openai-api-key sk-kritical-scx-local'
-            Write-Host '  Cline / Continue / OpenCode / goose → configure openai-compatible endpoint http://127.0.0.1:4180'
-            Write-Host '  Claude Code   → ANTHROPIC_BASE_URL=http://127.0.0.1:4180 (Anthropic-shape supported by LiteLLM)'
+            Write-Host 'How to use from SCX-aware Kritical tooling:' -ForegroundColor Cyan
+            Write-Host '  Use Kritical.SCXCode, Kritical.SCXCodex, or the SCX PowerShell module. They use SCX_API_KEY only.'
         } else {
             Write-Host "[install] Started but /health failed after 25s. Check $logFile" -ForegroundColor Red
             exit 1

@@ -8,7 +8,7 @@
 .DESCRIPTION
     - Reads SCX Ben key from
       C:\Users\joshl\OneDrive - Kritical Pty Ltd\Github-SecretsOutsideOfGitRepos\scx-benApiKey-MMDDYYYY-vNNN.txt
-    - Persists HKCU SCX_API_KEY + optional ANTHROPIC_BASE_URL + KRIT_SCX_MODEL_DEFAULT
+    - Persists HKCU SCX_API_KEY + KRIT_SCX_MODEL_DEFAULT
     - Drops the Kritical Continue config template to $env:USERPROFILE\.continue\config.json
       (with backup of any prior config to config.json.bak.krit-YYYYMMDD-HHmmss)
     - Verifies Continue extension installed via `code --list-extensions`
@@ -94,7 +94,7 @@ function Invoke-InstallContinue {
 
     # 2. HKCU env vars
     $results['HKCU_SCX_API_KEY']            = Set-HkcuVar 'SCX_API_KEY' $rawKey
-    $results['HKCU_ANTHROPIC_BASE_URL']     = Set-HkcuVar 'ANTHROPIC_BASE_URL' 'https://api.scx.ai'
+    $results['HKCU_ANTHROPIC_BASE_URL']     = 'UNTOUCHED: SCXCode never reads, writes, or removes this'
     $results['HKCU_KRIT_SCX_MODEL_DEFAULT'] = Set-HkcuVar 'KRIT_SCX_MODEL_DEFAULT' $DefaultModel
 
     # 3. Continue installed? (.5165h — detect stable + Insiders, prefer whichever is on PATH)
@@ -159,7 +159,7 @@ function Invoke-InstallContinue {
 function Invoke-RemoveContinue {
     $results = [ordered]@{}
     $results['HKCU_SCX_API_KEY']            = Remove-HkcuVar 'SCX_API_KEY'
-    $results['HKCU_ANTHROPIC_BASE_URL']     = Remove-HkcuVar 'ANTHROPIC_BASE_URL'
+    $results['HKCU_ANTHROPIC_BASE_URL']     = 'UNTOUCHED: SCXCode never reads, writes, or removes this'
     $results['HKCU_KRIT_SCX_MODEL_DEFAULT'] = Remove-HkcuVar 'KRIT_SCX_MODEL_DEFAULT'
     # Config drop — only remove if it's OURS (matches our template signature)
     if (Test-Path $script:ContinueCfg) {
@@ -180,7 +180,7 @@ function Invoke-RemoveContinue {
 function Invoke-Status {
     $results = [ordered]@{}
     $results['SCX_API_KEY_HKCU']          = if (Test-HkcuVar 'SCX_API_KEY')             { 'SET (len=' + ([Environment]::GetEnvironmentVariable('SCX_API_KEY','User').Length) + ')' } else { 'ABSENT' }
-    $results['ANTHROPIC_BASE_URL_HKCU']   = if (Test-HkcuVar 'ANTHROPIC_BASE_URL')      { [Environment]::GetEnvironmentVariable('ANTHROPIC_BASE_URL','User') }               else { 'ABSENT' }
+    $results['ANTHROPIC_BASE_URL_HKCU']   = 'UNINSPECTED: SCXCode never reads, writes, or removes this'
     $results['KRIT_SCX_MODEL_DEFAULT']    = if (Test-HkcuVar 'KRIT_SCX_MODEL_DEFAULT')  { [Environment]::GetEnvironmentVariable('KRIT_SCX_MODEL_DEFAULT','User') }           else { 'ABSENT' }
     $results['SecretFile']                = if (Get-ScxKeyFile)                        { (Get-ScxKeyFile).Name }                                                             else { 'ABSENT' }
     $results['ContinueExt']               = if (Test-CodeExtension 'continue.continue'){ 'INSTALLED' }                                                                       else { 'NOT-INSTALLED' }

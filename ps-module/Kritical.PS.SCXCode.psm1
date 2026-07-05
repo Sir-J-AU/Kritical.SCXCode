@@ -32,7 +32,7 @@ function Get-KritScxConfig {
         $k = [Environment]::GetEnvironmentVariable("SCX_API_KEY_$i", 'User')
         if ($k -and $k -ne $key) { $keys += $k }
     }
-    $baseUrl = [Environment]::GetEnvironmentVariable('ANTHROPIC_BASE_URL', 'User')
+    $baseUrl = [Environment]::GetEnvironmentVariable('KRIT_SCX_BASE_URL', 'User')
     if (-not $baseUrl) { $baseUrl = 'https://api.scx.ai' }
     $default = [Environment]::GetEnvironmentVariable('KRIT_SCX_MODEL_DEFAULT', 'User')
     if (-not $default) { $default = 'MiniMax-M2.7' }
@@ -56,6 +56,7 @@ function Set-KritScxConfig {
     <#
     .SYNOPSIS
         Set SCX config in HKCU. Any parameter left null leaves that env var untouched.
+        This module never reads, writes, removes, or reports native Anthropic/OpenAI env vars.
     #>
     [CmdletBinding(SupportsShouldProcess)]
     param(
@@ -67,8 +68,8 @@ function Set-KritScxConfig {
     if ($ApiKey -and $PSCmdlet.ShouldProcess('HKCU SCX_API_KEY', 'set')) {
         [Environment]::SetEnvironmentVariable('SCX_API_KEY', $ApiKey, 'User')
     }
-    if ($BaseUrl -and $PSCmdlet.ShouldProcess('HKCU ANTHROPIC_BASE_URL', 'set')) {
-        [Environment]::SetEnvironmentVariable('ANTHROPIC_BASE_URL', $BaseUrl, 'User')
+    if ($BaseUrl -and $PSCmdlet.ShouldProcess('HKCU KRIT_SCX_BASE_URL', 'set')) {
+        [Environment]::SetEnvironmentVariable('KRIT_SCX_BASE_URL', $BaseUrl, 'User')
     }
     if ($DefaultModel -and $PSCmdlet.ShouldProcess('HKCU KRIT_SCX_MODEL_DEFAULT', 'set')) {
         [Environment]::SetEnvironmentVariable('KRIT_SCX_MODEL_DEFAULT', $DefaultModel, 'User')
@@ -375,11 +376,11 @@ function Install-KritScxKey {
 function Uninstall-KritScxKey {
     <#
     .SYNOPSIS
-        Remove Kritical HKCU env vars (SCX_API_KEY / ANTHROPIC_BASE_URL / KRIT_SCX_MODEL_DEFAULT / KRIT_SCX_FALLBACK_CHAIN).
+        Remove Kritical HKCU env vars only. Native Anthropic/OpenAI env vars are never touched.
     #>
     [CmdletBinding(SupportsShouldProcess)]
     param()
-    foreach ($n in 'SCX_API_KEY', 'ANTHROPIC_BASE_URL', 'KRIT_SCX_MODEL_DEFAULT', 'KRIT_SCX_FALLBACK_CHAIN') {
+    foreach ($n in 'SCX_API_KEY', 'KRIT_SCX_BASE_URL', 'KRIT_SCX_MODEL_DEFAULT', 'KRIT_SCX_FALLBACK_CHAIN') {
         if ($PSCmdlet.ShouldProcess("HKCU $n", 'remove')) {
             [Environment]::SetEnvironmentVariable($n, $null, 'User')
         }

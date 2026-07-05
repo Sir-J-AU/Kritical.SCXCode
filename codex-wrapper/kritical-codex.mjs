@@ -43,24 +43,16 @@ for (let i = 0; i < argv.length; i++) {
 }
 
 // -----------------------------------------------------------------------------
-// HR29 preflight — remember original env, never mutate globally
-// -----------------------------------------------------------------------------
-
-const origOpenAIBaseUrl = process.env.OPENAI_BASE_URL;
-const origOpenAIKey = process.env.OPENAI_API_KEY;
-
-// HR29 hard invariant: NEVER touch ANTHROPIC_BASE_URL.
+// HR29 hard invariant: never read, write, remove, or report Anthropic/OpenAI env vars.
 
 // -----------------------------------------------------------------------------
 // Provider slot detection
 // -----------------------------------------------------------------------------
 
 const scxKey = process.env.SCX_API_KEY;
-const openaiKey = process.env.OPENAI_API_KEY;
 
 if (!model) {
-  if (scxKey) model = 'scx-coder';
-  else if (openaiKey) model = 'openai/gpt-5-codex';
+  if (scxKey) model = 'gpt-oss-120b';
 }
 
 // -----------------------------------------------------------------------------
@@ -108,7 +100,7 @@ function emitBanner(effectiveBaseUrl) {
   if (effectiveBaseUrl) {
     console.log(`  Codex endpoint: ${effectiveBaseUrl}  (model -> ${model || '(codex default)'})`);
   } else {
-    console.log('  Codex endpoint: (codex CLI default — api.openai.com)');
+    console.log('  Codex endpoint: unavailable — SCX proxy is not healthy');
   }
   console.log('');
 }
@@ -149,9 +141,7 @@ async function main() {
   if (baseUrl) {
     effectiveBaseUrl = baseUrl;
   } else if (proxyHealthy) {
-    effectiveBaseUrl = 'http://127.0.0.1:4180';
-  } else if (origOpenAIBaseUrl) {
-    effectiveBaseUrl = origOpenAIBaseUrl;
+    effectiveBaseUrl = 'http://127.0.0.1:4180/v1';
   }
 
   emitBanner(effectiveBaseUrl);
@@ -173,20 +163,26 @@ async function main() {
     process.exit(2);
   }
 
-  // Per-invocation env only
-  const childEnv = { ...process.env };
-  if (effectiveBaseUrl) childEnv.OPENAI_BASE_URL = effectiveBaseUrl;
-  if (effectiveBaseUrl === 'http://127.0.0.1:4180') {
-    childEnv.OPENAI_API_KEY = 'sk-kritical-scx-local';
+  if (!scxKey) {
+    console.error('SCX_API_KEY is not set. Kritical.SCXCodex uses SCX_API_KEY only.');
+    process.exit(3);
   }
-  if (model) childEnv.KRITICAL_CODEX_DEFAULT_MODEL = model;
-
-  const finalArgs = [...passthrough];
-  if (model && !finalArgs.includes('--model') && !finalArgs.includes('-m')) {
-    finalArgs.unshift('--model', model);
+  if (!effectiveBaseUrl) {
+    console.error('SCX proxy is not healthy and no --base-url was provided. Refusing to fall back to native provider settings.');
+    process.exit(4);
   }
 
-  const child = spawn('codex', finalArgs, { stdio: 'inherit', env: childEnv });
+  const providerOverrides = [
+    '-c', 'model_provider=scx',
+    '-c', 'model_providers.scx.name="Southern Cross AI"',
+    '-c', `model_providers.scx.base_url="${effectiveBaseUrl}"`,
+    '-c', 'model_providers.scx.env_key="SCX_API_KEY"',
+    '-c', 'model_providers.scx.wire_api="responses"',
+    '-c', `model="${model}"`,
+  ];
+  const finalArgs = [...providerOverrides, ...passthrough];
+
+  const child = spawn('codex', finalArgs, { stdio: 'inherit', env: process.env });
   child.on('close', (code) => process.exit(code ?? 0));
 }
 

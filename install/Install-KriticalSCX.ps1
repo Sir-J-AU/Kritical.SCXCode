@@ -31,7 +31,8 @@ function Show-Status {
   Write-Host "  $(Ok (Get-Command code-insiders -ea 0))  code-insiders"
   Write-Host "  $(Ok (Test-Path $vpy))  litellm venv"
   Write-Host "  $(Ok (Test-Path $vpy)) litellm installed  $(if(Test-Path $vpy){try{& $vpy -c "import litellm;print(litellm.__version__)" 2>$null}catch{}})"
-  Write-Host "  $(Ok (Test-Path 'C:\KriticalSCX\bin\kcodex.cmd'))  kcodex shim"
+  Write-Host "  $(Ok (Test-Path 'C:\KriticalSCX\dist\Kritical.SCXCodex\bin\Kritical.SCXCodex.exe'))  Kritical.SCXCodex.exe"
+  Write-Host "  $(Ok (Test-Path 'C:\KriticalSCX\dist\Kritical.SCXCodex\.kritical-scxcodex-build.receipt.json'))  Kritical.SCXCodex build receipt"
   $ext = try { (code-insiders --list-extensions) -match 'plugin-control-panel' } catch { $false }
   Write-Host "  $(Ok $ext)  Plugin Control Panel extension"
   $proxy = try { (Invoke-WebRequest 'http://127.0.0.1:4180/health/liveliness' -UseBasicParsing -TimeoutSec 3).StatusCode -eq 200 } catch { $false }

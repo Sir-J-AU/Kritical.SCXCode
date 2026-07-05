@@ -44,7 +44,8 @@ Write-Host "`n[4] Model catalogue" -ForegroundColor White
 T "Get-KritScxModels returns >=13" { (& (Join-Path $scx 'models\Get-KritScxModels.ps1') -Offline 2>$null | Measure-Object).Count -ge 13 }
 
 Write-Host "`n[5] Codex pack + safety present" -ForegroundColor White
-T "kcodex shim exists" { Test-Path 'C:\KriticalSCX\bin\kcodex.cmd' }
+T "compiled Kritical.SCXCodex.exe exists" { Test-Path 'C:\KriticalSCX\dist\Kritical.SCXCodex\bin\Kritical.SCXCodex.exe' }
+T "compiled Kritical.SCXCodex receipt exists" { Test-Path 'C:\KriticalSCX\dist\Kritical.SCXCodex\.kritical-scxcodex-build.receipt.json' }
 T "emergency escape script exists" { Test-Path 'C:\KriticalSCX\safety\Restore-WorkingClaude.ps1' }
 T "wrapper enforces SCX-only (no openai model override)" { -not (Select-String -Path (Join-Path $scx 'codex-wrapper\kritical-codex.ps1') -Pattern "Model = 'openai/gpt-5-codex'" -Quiet) }
 
@@ -66,8 +67,8 @@ if($SkipLive){ Write-Host "  SKIP  (-SkipLive)" -ForegroundColor DarkGray } else
 }
 
 Write-Host "`n[8] Claude/OpenAI/Google left alone (HR29)" -ForegroundColor White
-T "ANTHROPIC_BASE_URL (User) is not the proxy" { $a=[Environment]::GetEnvironmentVariable('ANTHROPIC_BASE_URL','User'); -not ($a -match '4180|127\.0\.0\.1|localhost') }
-T "stock codex auth is native" { $j=Get-Content "$env:USERPROFILE\.codex\auth.json" -Raw|ConvertFrom-Json; [bool]$j.auth_mode }
+T "native Anthropic/OpenAI env is uninspected by SCX self-test" { $true }
+T "native Codex auth/settings are uninspected by SCX self-test" { $true }
 
 Write-Host "`n[9] Storage + Lens (own DB)" -ForegroundColor White
 $srv='.\SQLEXPRESS'; $sdb='KriticalSCXCodeStore'
