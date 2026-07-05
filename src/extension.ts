@@ -781,12 +781,17 @@ async function cmdOpenChat(ctx: vscode.ExtensionContext) {
     } else if (msg.type === 'setConfig') {
       try { await vscode.workspace.getConfiguration('kritical.scxcode').update(msg.key, msg.value, vscode.ConfigurationTarget.Global); }
       catch (e) { panel.webview.postMessage({ type: 'error', error: 'Setting update failed: ' + (e as Error).message }); }
-    } else if (msg.type === 'uploadFile') {
-      const picked = await vscode.window.showOpenDialog({ canSelectMany: true, canSelectFiles: true, canSelectFolders: true, openLabel: 'Attach files/folders to SCXCode' });
+    } else if (msg.type === 'uploadFile' || msg.type === 'uploadFolder') {
+      const folder = msg.type === 'uploadFolder';
+      const picked = await vscode.window.showOpenDialog({
+        canSelectMany: !folder, canSelectFiles: !folder, canSelectFolders: folder,
+        openLabel: folder ? 'Attach this folder to SCXCode' : 'Attach file(s) to SCXCode',
+        title: folder ? 'Select a folder (read recursively)' : 'Select one or more files',
+      });
       if (picked && picked.length) {
         const { block, fileCount, chars } = await collectAttachments(picked);
-        if (fileCount) { attached += block; panel.webview.postMessage({ type: 'fileAttached', name: `${fileCount} file(s)`, chars }); }
-        else { panel.webview.postMessage({ type: 'error', error: 'No readable text files in that selection.' }); }
+        if (fileCount) { attached += block; panel.webview.postMessage({ type: 'fileAttached', name: folder ? `folder · ${fileCount} file(s)` : `${fileCount} file(s)`, chars }); }
+        else { panel.webview.postMessage({ type: 'error', error: folder ? 'No readable text files in that folder.' : 'No readable text files selected.' }); }
       }
     } else if (msg.type === 'attachRepo') {
       const found = await vscode.workspace.findFiles('**/*.{ts,js,py,ps1,psm1,al,md,json,yaml,yml}', '**/{node_modules,out,.git,.alpackages}/**', 80);
@@ -889,14 +894,15 @@ select option:checked { background: var(--vscode-list-activeSelectionBackground,
   <button class="adv-btn" id="advBtn" title="Advanced options">⚙</button>
 </div>
 <div class="adv" id="adv">
-  <label title="Sampling temperature. The source marker shows whether this is the model's published recommendation, a neutral default (no published value), from the live API, or your manual override.">Temp <input type="range" id="temp" min="0" max="1" step="0.1" value="0.7"><span id="tempVal">0.7</span> <span id="tempSrc" style="opacity:0.6;font-size:10px;"></span></label>
+  <label title="Sampling temperature (SCX accepts 0–2). The source marker shows whether this is the model's published recommendation (rec), a neutral default when none is published (def), the live API value (api), or your manual override (you).">Temp <input type="range" id="temp" min="0" max="2" step="0.05" value="0.7"><span id="tempVal">0.7</span> <span id="tempSrc" style="opacity:0.6;font-size:10px;"></span></label>
   <label>Provider <select id="provider"><option value="auto">Auto (SCX→Claude CLI)</option><option value="scx-native">SCX only</option><option value="claude-code-cli">Claude CLI only</option></select></label>
 </div>
 <div id="chat"></div>
 <div class="input">
   <div class="toolbar">
-    <button class="tool-btn" id="tbUpload" title="Attach files AND folders from your machine (multi-select; folders are read recursively). Reads real local file contents into the next message.">📎 File / Folder</button>
-    <button class="tool-btn" id="tbRepo" title="Attach a workspace file summary">📁 Repo</button>
+    <button class="tool-btn" id="tbFiles" title="Attach one or more FILES from your machine (multi-select). Their real contents are read into the next message.">📄 Files</button>
+    <button class="tool-btn" id="tbFolder" title="Attach a FOLDER from your machine (read recursively; node_modules/.git skipped). Real file contents are read into the next message.">📁 Folder</button>
+    <button class="tool-btn" id="tbRepo" title="Attach a summary of the open workspace's files">🗂 Repo</button>
     <button class="tool-btn" id="tbMcp" title="MCP servers &amp; tools">🔌 MCP</button>
     <button class="tool-btn" id="tbCodex" title="Open SCX Codex (Kritical/SCX-branded Codex CLI) in a terminal — never touches your real codex config">✦ SCX Codex</button>
     <span class="ctx-chip" id="ctxChip"></span>
@@ -1019,7 +1025,8 @@ providerEl.onchange = () => vscode.postMessage({ type: 'setConfig', key: 'provid
 tempEl.oninput = () => { tempVal.textContent = tempEl.value; };
 tempEl.onchange = () => { _tempUserSet = true; vscode.postMessage({ type: 'setConfig', key: 'temperature', value: parseFloat(tempEl.value) }); };
 advBtn.onclick = () => { advPanel.classList.toggle('open'); advBtn.classList.toggle('on'); };
-document.getElementById('tbUpload').onclick = () => vscode.postMessage({ type: 'uploadFile' });
+document.getElementById('tbFiles').onclick = () => vscode.postMessage({ type: 'uploadFile' });
+document.getElementById('tbFolder').onclick = () => vscode.postMessage({ type: 'uploadFolder' });
 document.getElementById('tbRepo').onclick = () => vscode.postMessage({ type: 'attachRepo' });
 document.getElementById('tbMcp').onclick = () => vscode.postMessage({ type: 'listMcp' });
 document.getElementById('tbCodex').onclick = () => vscode.postMessage({ type: 'scxCodex' });
@@ -1170,12 +1177,17 @@ class KriticalChatViewProvider implements vscode.WebviewViewProvider {
         } catch (e) {
           view.webview.postMessage({ type: 'error', error: 'Setting update failed: ' + (e as Error).message });
         }
-      } else if (msg.type === 'uploadFile') {
-        const picked = await vscode.window.showOpenDialog({ canSelectMany: true, canSelectFiles: true, canSelectFolders: true, openLabel: 'Attach files/folders to SCXCode' });
+      } else if (msg.type === 'uploadFile' || msg.type === 'uploadFolder') {
+        const folder = msg.type === 'uploadFolder';
+        const picked = await vscode.window.showOpenDialog({
+          canSelectMany: !folder, canSelectFiles: !folder, canSelectFolders: folder,
+          openLabel: folder ? 'Attach this folder to SCXCode' : 'Attach file(s) to SCXCode',
+          title: folder ? 'Select a folder (read recursively)' : 'Select one or more files',
+        });
         if (picked && picked.length) {
           const { block, fileCount, chars } = await collectAttachments(picked);
-          if (fileCount) { this._attached += block; view.webview.postMessage({ type: 'fileAttached', name: `${fileCount} file(s)`, chars }); }
-          else { view.webview.postMessage({ type: 'error', error: 'No readable text files in that selection.' }); }
+          if (fileCount) { this._attached += block; view.webview.postMessage({ type: 'fileAttached', name: folder ? `folder · ${fileCount} file(s)` : `${fileCount} file(s)`, chars }); }
+          else { view.webview.postMessage({ type: 'error', error: folder ? 'No readable text files in that folder.' : 'No readable text files selected.' }); }
         }
       } else if (msg.type === 'attachRepo') {
         const found = await vscode.workspace.findFiles('**/*.{ts,js,py,ps1,psm1,al,md,json,yaml,yml}', '**/{node_modules,out,.git,.alpackages}/**', 80);
