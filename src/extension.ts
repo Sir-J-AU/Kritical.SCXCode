@@ -1386,6 +1386,7 @@ function cmdSetupGui(context: vscode.ExtensionContext, tab?: string) {
       codex: {
         model: codex.model || '', sandbox_mode: codex.sandbox_mode || 'workspace-write',
         model_reasoning_effort: codex.model_reasoning_effort || 'medium', approval_policy: codex.approval_policy || 'on-request',
+        model_reasoning_summary: codex.model_reasoning_summary || 'auto', model_verbosity: codex.model_verbosity || 'medium',
       },
       mcp: Object.keys(mcp).map((name) => ({ name, command: mcp[name].command || '', args: Array.isArray(mcp[name].args) ? mcp[name].args.join(' ') : '', env: mcp[name].env ? JSON.stringify(mcp[name].env) : '' })),
       scxcode: { baseUrl: cfg.baseUrl, defaultModel: cfg.defaultModel, apiKeySet: !!cfg.apiKey, keyCount: cfg.apiKeys.length, temperature: cfg.temperature },
@@ -1400,6 +1401,7 @@ function cmdSetupGui(context: vscode.ExtensionContext, tab?: string) {
     else if (m.type === 'saveCodex') {
       const codex = readCodexConfig();
       codex.model = m.model || undefined; codex.sandbox_mode = m.sandbox_mode; codex.model_reasoning_effort = m.reasoning; codex.approval_policy = m.approval;
+      codex.model_reasoning_summary = m.summary; codex.model_verbosity = m.verbosity;
       const r = writeCodexConfigSafe(codex); post({ type: 'saved', section: 'codex', ...r });
     } else if (m.type === 'saveMcp') {
       const codex = readCodexConfig();
@@ -1501,6 +1503,8 @@ function setupGuiHtml(logoUri: string): string {
       <div class="note" id="cx-model-note">Defaults to <b>(follow chat panel)</b> — SCX Codex uses whatever model your chat panel is on.</div>
       <label>Sandbox mode</label><select id="cx-sandbox"><option>read-only</option><option>workspace-write</option><option>danger-full-access</option></select>
       <label>Reasoning effort</label><select id="cx-reasoning"><option>low</option><option>medium</option><option>high</option><option>xhigh</option></select>
+      <label>Reasoning summary</label><select id="cx-summary"><option>auto</option><option>concise</option><option>detailed</option><option>none</option></select>
+      <label>Verbosity</label><select id="cx-verbosity"><option>low</option><option>medium</option><option>high</option></select>
       <label>Approval policy</label><select id="cx-approval"><option>untrusted</option><option>on-failure</option><option>on-request</option><option>never</option></select>
       <div><button class="save" id="save-codex">Save Codex options</button><span id="msg-codex"></span></div>
       <div><button class="launch" id="launch">✦ Launch SCX Codex now</button></div>
@@ -1585,7 +1589,7 @@ function setupGuiHtml(logoUri: string): string {
     return d;
   }
   q('add-mcp').onclick=function(){ q('mcp-rows').appendChild(mcpCard()); };
-  q('save-codex').onclick=function(){ vscode.postMessage({type:'saveCodex',model:q('cx-model').value,sandbox_mode:q('cx-sandbox').value,reasoning:q('cx-reasoning').value,approval:q('cx-approval').value}); };
+  q('save-codex').onclick=function(){ vscode.postMessage({type:'saveCodex',model:q('cx-model').value,sandbox_mode:q('cx-sandbox').value,reasoning:q('cx-reasoning').value,approval:q('cx-approval').value,summary:q('cx-summary').value,verbosity:q('cx-verbosity').value}); };
   q('save-mcp').onclick=function(){
     var servers=[]; q('mcp-rows').querySelectorAll('.mcp-card').forEach(function(r){ servers.push({name:r.querySelector('.m-name').value.trim(),command:r.querySelector('.m-cmd').value.trim(),args:r.querySelector('.m-args').value.trim(),env:r.querySelector('.m-env').value.trim()}); });
     vscode.postMessage({type:'saveMcp',servers:servers});
@@ -1599,6 +1603,7 @@ function setupGuiHtml(logoUri: string): string {
       selectValid(q('cx-model'), m.codex.model||'', q('cx-model-note'), 'codex');
       if(!m.codex.model){ q('cx-model-note').className='note'; q('cx-model-note').innerHTML='Defaults to <b>(follow chat panel)</b> — SCX Codex uses whatever model your chat panel is on.'; }
       q('cx-sandbox').value=m.codex.sandbox_mode; q('cx-reasoning').value=m.codex.model_reasoning_effort; q('cx-approval').value=m.codex.approval_policy;
+      q('cx-summary').value=m.codex.model_reasoning_summary||'auto'; q('cx-verbosity').value=m.codex.model_verbosity||'medium';
       q('mcp-rows').innerHTML=''; (m.mcp||[]).forEach(function(s){ q('mcp-rows').appendChild(mcpCard(s)); });
       if(!(m.mcp||[]).length){ q('mcp-rows').appendChild(mcpCard()); }
       q('sx-base').value=m.scxcode.baseUrl; q('sx-key').value=m.scxcode.apiKeySet?('set · '+m.scxcode.keyCount+' key(s) in HKCU'):'NOT SET — set SCX_API_KEY';
