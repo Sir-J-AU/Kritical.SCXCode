@@ -13,7 +13,8 @@
 import http from 'node:http';
 import { appendFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const HOST = '127.0.0.1';
 const PORT = parseInt(process.env.KRIT_SHIM_PORT || '4199', 10);
@@ -78,6 +79,12 @@ const server = http.createServer((req, res) => {
   req.on('end', async () => {
     const raw = Buffer.concat(chunks).toString('utf8');
     const url = new URL(req.url, `http://${HOST}`);
+    // local liveness — lets the wrapper confirm the shim is up without a SCX round-trip
+    if (req.method === 'GET' && url.pathname === '/health') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, service: 'scx-agentic-shim', upstream: UPSTREAM }));
+      return;
+    }
     const target = UPSTREAM + url.pathname.replace(/^\/v1/, '') + url.search;
 
     const isResponses = req.method === 'POST' && url.pathname.endsWith('/responses');
@@ -122,7 +129,8 @@ const server = http.createServer((req, res) => {
 });
 
 // Only bind the port when run directly (so tests can import the transforms without starting a server).
-if (process.argv[1] && import.meta.url === `file://${process.argv[1].replace(/\\/g, '/')}`) {
+const runDirectly = process.argv[1] && resolve(fileURLToPath(import.meta.url)) === resolve(process.argv[1]);
+if (runDirectly) {
   server.listen(PORT, HOST, () => {
     console.log(`Kritical SCX agentic shim -> ${UPSTREAM}  on http://${HOST}:${PORT}  (log: ${LOG})`);
     console.log(`Kill switch: stop this process; point codex base_url back to ${UPSTREAM} to go raw.`);
