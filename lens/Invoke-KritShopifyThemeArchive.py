@@ -53,6 +53,7 @@ import json
 import os
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -69,14 +70,27 @@ TOKEN_ENV = {
 }
 
 
-def _req(store, token, path, method="GET", timeout=90):
+def _req(store, token, path, method="GET", timeout=90, max_retries=6):
+    """Admin REST call with 429/5xx retry + Retry-After honoring. Shopify REST is
+    2 req/s leaky-bucket; bursts 429. We back off and retry rather than lose the asset."""
     url = f"https://{store}/admin/api/{API_VERSION}/{path}"
-    req = urllib.request.Request(url, method=method,
-                                headers={"X-Shopify-Access-Token": token,
-                                         "Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        body = r.read()
-        return r.status, (json.loads(body) if body else {})
+    attempt = 0
+    while True:
+        req = urllib.request.Request(url, method=method,
+                                    headers={"X-Shopify-Access-Token": token,
+                                             "Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                body = r.read()
+                return r.status, (json.loads(body) if body else {})
+        except urllib.error.HTTPError as e:
+            retryable = e.code == 429 or 500 <= e.code < 600
+            if not retryable or attempt >= max_retries:
+                raise
+            retry_after = e.headers.get("Retry-After")
+            wait = float(retry_after) if retry_after else min(2 ** attempt * 0.5, 8.0)
+            time.sleep(wait)
+            attempt += 1
 
 
 def list_themes(store, token):
@@ -151,7 +165,7 @@ def main():
     ap.add_argument("--out", default=r"C:\KriticalSCX\theme-archive")
     ap.add_argument("--delete", action="store_true", help="After verified download, DELETE eligible themes off the store (never PROD, never published, never --keep).")
     ap.add_argument("--keep", default="", help="Comma-separated theme ids to never delete.")
-    ap.add_argument("--sleep", type=float, default=0.55, help="Seconds between asset GETs (REST 2 req/s).")
+    ap.add_argument("--sleep", type=float, default=0.6, help="Seconds between asset GETs (REST 2 req/s; 429s auto-retry with backoff regardless).")
     args = ap.parse_args()
 
     store = args.store.strip().lower()
