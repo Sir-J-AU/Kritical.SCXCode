@@ -73,6 +73,13 @@ function isPlanGateError(status, text) {
 
 export { flattenTool, transformRequestBody, isPlanGateError, SERVER_TOOLS };
 
+// ---- telemetry ("wire the fuck out of it") — one structured JSON row per served request ----
+const TELEM = process.env.KRIT_SHIM_TELEMETRY || join(tmpdir(), 'scx-shim-telemetry.jsonl');
+let _seq = 0;
+function telem(ev) {
+  try { appendFileSync(TELEM, JSON.stringify({ ts: new Date().toISOString(), seq: ++_seq, ...ev }) + '\n'); } catch {}
+}
+
 const server = http.createServer((req, res) => {
   const chunks = [];
   req.on('data', (c) => chunks.push(c));
@@ -97,33 +104,45 @@ const server = http.createServer((req, res) => {
       body: req.method === 'GET' || req.method === 'HEAD' ? undefined : bodyStr,
     });
 
+    const t0 = Date.now();
+    const T = { method: req.method, endpoint: url.pathname, model: parsed && parsed.model, stream: !!(parsed && parsed.stream), retried: false, flattened: false, bytes: 0 };
     try {
-      const firstBody = isResponses && parsed ? JSON.stringify(transformRequestBody(parsed)) : raw;
+      let firstBody = raw;
+      if (isResponses && parsed) {
+        T.tools_in = (parsed.tools || []).map((t) => t && t.type);
+        const transformed = transformRequestBody(parsed);
+        T.tools_out = (transformed.tools || []).map((t) => t && t.type);
+        T.flattened = JSON.stringify(T.tools_in) !== JSON.stringify(T.tools_out);
+        firstBody = JSON.stringify(transformed);
+      }
       let upstream = await call(firstBody);
 
       // On a plan-gate 400 (a server tool the model's plan can't run), retry with server tools dropped.
       if (isResponses && parsed && upstream.status >= 400) {
         const errText = await upstream.text();
         if (isPlanGateError(upstream.status, errText)) {
-          log('[retry] plan-gate — dropping server tools and retrying');
+          log('[retry] plan-gate — dropping server tools and retrying'); T.retried = true; T.plan_gate = true;
           upstream = await call(JSON.stringify(transformRequestBody(parsed, true)));
         } else {
           res.writeHead(upstream.status, { 'content-type': upstream.headers.get('content-type') || 'application/json' });
           res.end(errText);
           log('[resp]', upstream.status, errText.slice(0, 160));
+          telem({ ...T, status: upstream.status, latency_ms: Date.now() - t0, error: errText.slice(0, 200) });
           return;
         }
       }
 
       res.writeHead(upstream.status, { 'content-type': upstream.headers.get('content-type') || 'application/json' });
       const reader = upstream.body?.getReader();
-      if (reader) { while (true) { const { done, value } = await reader.read(); if (done) break; res.write(Buffer.from(value)); } }
+      if (reader) { while (true) { const { done, value } = await reader.read(); if (done) break; T.bytes += value.length; res.write(Buffer.from(value)); } }
       res.end();
       if (upstream.status >= 400) log('[resp]', upstream.status, target);
+      telem({ ...T, status: upstream.status, latency_ms: Date.now() - t0 });
     } catch (e) {
       log('[proxy] error', e.message);
       res.writeHead(502, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ error: { message: `shim upstream error: ${e.message}` } }));
+      telem({ ...T, status: 502, latency_ms: Date.now() - t0, error: e.message });
     }
   });
 });
