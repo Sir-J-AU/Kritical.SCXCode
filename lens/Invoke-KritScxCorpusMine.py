@@ -92,16 +92,39 @@ for rel, lang, loc, sha, funcs, imps in per_file:
         cur.execute("INSERT dbo.LensSymbol(path,name,kind,start_line) VALUES(?,?,?,?)", rel, name, "function", ln)
 cn.commit()
 
+# .5231 (bughunt) — strip comments and string/char literals so edge resolution can't match a symbol
+# name that only appears inside a comment or a quoted string (a major false-positive source). This is
+# a pragmatic lexical scrub (not a full parser): blank out line comments, block comments, and quoted
+# spans, preserving newlines/length so later heuristics stay stable. Covers the corpus's languages
+# (# for ps1/py, // and /* */ for ts/js/mjs/cjs, plus ' " ` string/char quotes).
+_STRIP = re.compile(
+    r"""(?P<block>/\*.*?\*/)          # C-style block comment
+      | (?P<line>(?://|\#)[^\n]*)     # // or # line comment
+      | (?P<dq>"(?:\\.|[^"\\\n])*")   # double-quoted string
+      | (?P<sq>'(?:\\.|[^'\\\n])*')   # single-quoted string / char
+      | (?P<bt>`(?:\\.|[^`\\])*`)     # backtick template literal
+    """,
+    re.S | re.X,
+)
+def _strip_noncode(text):
+    # Replace each comment/string span with same-length whitespace (newlines kept) so word boundaries
+    # and offsets are preserved but the contents can no longer produce spurious symbol matches.
+    return _STRIP.sub(lambda m: re.sub(r"[^\n]", " ", m.group(0)), text)
+
 # call graph: for each file, which OTHER known symbols does it reference?
 edges = 0
 for p, (rel, lang, loc, sha, funcs, imps) in zip(files, per_file):
     try: src = open(p, encoding="utf-8-sig", errors="replace").read()
     except Exception: continue
+    code = _strip_noncode(src)   # .5231 — match only against code, not comments/strings
     own = set(n for n, _ in funcs)
     called = set()
     for name, tgt in all_symbols.items():
         if name in own or tgt == rel: continue
-        if re.search(r"\b" + re.escape(name) + r"\b\s*\(", src) or re.search(r"\b" + re.escape(name) + r"\b", src) and len(name) > 4:
+        # .5231 (bughunt) — require a CALL-LIKE context (`name(`), optionally qualified (`.name(`),
+        # instead of the old "bare word anywhere" fallback whose loose `or ... and len>4` precedence
+        # let any 5+ char name match anywhere. Calls are the edges we actually want in a call graph.
+        if re.search(r"(?<![\w.])" + re.escape(name) + r"\s*\(", code):
             called.add((name, tgt))
     for name, tgt in called:
         cur.execute("INSERT dbo.LensCallGraph(from_path,symbol,edge,target_path) VALUES(?,?,?,?)", rel, name, "call", tgt); edges += 1

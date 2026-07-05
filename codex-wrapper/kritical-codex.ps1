@@ -66,16 +66,26 @@ if (-not $scxKey) {
 # ------------------------------------------------------------
 # Resolve an AGENTIC-CAPABLE model (follow the extension's current selection when possible)
 # ------------------------------------------------------------
+# .5231 (bughunt) — track WHERE $Model came from so the auto-correct warning can be accurate:
+# an explicit -Model (operator typed it) vs. the shared VS Code selection file.
+$modelFromSharedFile = $false
 if (-not $Model) {
     $sharedModel = Join-Path $env:USERPROFILE '.kritical-scx\current-model.json'
-    if (Test-Path $sharedModel) { try { $Model = (Get-Content $sharedModel -Raw | ConvertFrom-Json).id } catch {} }
+    if (Test-Path $sharedModel) { try { $Model = (Get-Content $sharedModel -Raw | ConvertFrom-Json).id; if ($Model) { $modelFromSharedFile = $true } } catch {} }
 }
 if ($Model) {
     # accept case-insensitively; snap to the canonical agentic id
     $match = $agenticModels | Where-Object { $_ -ieq $Model } | Select-Object -First 1
     if ($match) { $Model = $match }
     elseif ($Model -notin $agenticModels) {
-        Write-Host "  '$Model' can't drive agentic codex on SCX — using '$defaultAgentic' this session. Override with -Model." -ForegroundColor DarkYellow
+        # .5231 (bughunt) — the old message always said "Override with -Model", which is misleading
+        # when the value came from the shared current-model.json (the VS Code model selection). Word
+        # the guidance based on the actual source of $Model.
+        if ($modelFromSharedFile) {
+            Write-Host "  '$Model' (from the VS Code model selection / shared current-model.json) can't drive agentic codex on SCX — using '$defaultAgentic' this session. Pick an agentic model in VS Code, or pass -Model to override." -ForegroundColor DarkYellow
+        } else {
+            Write-Host "  '$Model' can't drive agentic codex on SCX — using '$defaultAgentic' this session. Override with -Model." -ForegroundColor DarkYellow
+        }
         $Model = $defaultAgentic
     }
 } else { $Model = $defaultAgentic }
