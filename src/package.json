@@ -111,6 +111,12 @@
         "category": "Kritical SCXCode"
       },
       {
+        "command": "kritical.scxcode.lookingGlass",
+        "title": "Kritical SCX: Open Lens Looking Glass",
+        "category": "Kritical SCXCode",
+        "icon": "$(telescope)"
+      },
+      {
         "command": "kritical.scxcode.scxCodex",
         "title": "Kritical: Open SCX Codex (terminal — SCX-branded, never touches real codex)",
         "category": "Kritical SCXCode"
@@ -150,9 +156,14 @@
           "group": "navigation@4"
         },
         {
-          "command": "kritical.scxcode.setupGui",
+          "command": "kritical.scxcode.lookingGlass",
           "when": "view == kritical.scxcode.chat",
           "group": "navigation@5"
+        },
+        {
+          "command": "kritical.scxcode.setupGui",
+          "when": "view == kritical.scxcode.chat",
+          "group": "navigation@6"
         }
       ],
       "editor/title": [
@@ -189,6 +200,10 @@
         },
         {
           "command": "kritical.scxcode.showStatus",
+          "when": "true"
+        },
+        {
+          "command": "kritical.scxcode.lookingGlass",
           "when": "true"
         },
         {
