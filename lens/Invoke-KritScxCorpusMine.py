@@ -13,7 +13,7 @@ import pyodbc
 ROOT = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else ".")
 CONN = ("DRIVER={ODBC Driver 18 for SQL Server};SERVER=.\\SQLEXPRESS;DATABASE=KriticalSCXCodeStore;Trusted_Connection=yes;Encrypt=no;")
 SKIP = ("node_modules", os.sep+"out"+os.sep, os.sep+"emitted"+os.sep, "receipts", os.sep+"sources"+os.sep, "package-lock")
-CODE = (".ps1", ".psm1", ".py", ".ts", ".js")
+CODE = (".ps1", ".psm1", ".py", ".ts", ".js", ".mjs", ".cjs")  # .5231 — include ES modules (shim, node-agent)
 
 DDL = [
  """IF OBJECT_ID('dbo.LensCorpusFile') IS NULL CREATE TABLE dbo.LensCorpusFile(
@@ -37,6 +37,7 @@ FUNC = {
  "ts":   re.compile(r"^\s*(?:export\s+)?(?:async\s+)?function\s+([A-Za-z_]\w*)|^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_]\w*)\s*=\s*(?:async\s*)?\([^)]*\)\s*(?::\s*[^={]+)?=>|^\s*(?:export\s+)?(?:abstract\s+)?class\s+([A-Za-z_]\w*)", re.M),
  "js":   re.compile(r"^\s*(?:export\s+)?(?:async\s+)?function\s+([A-Za-z_]\w*)|^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_]\w*)\s*=\s*(?:async\s*)?\([^)]*\)\s*=>|^\s*(?:export\s+)?class\s+([A-Za-z_]\w*)", re.M),
 }
+FUNC["mjs"] = FUNC["js"]; FUNC["cjs"] = FUNC["js"]  # .5231 — ES modules use the JS extractor
 IMPORT = {
  "ps1":  re.compile(r"(?:Import-Module|\.\s+)\s+['\"]?([^\s'\";]+)", re.M),
  "psm1": re.compile(r"Import-Module\s+['\"]?([^\s'\";]+)", re.M),
@@ -44,6 +45,7 @@ IMPORT = {
  "ts":   re.compile(r"import\s+.*?from\s+['\"]([^'\"]+)['\"]|require\(['\"]([^'\"]+)['\"]\)", re.M),
  "js":   re.compile(r"import\s+.*?from\s+['\"]([^'\"]+)['\"]|require\(['\"]([^'\"]+)['\"]\)", re.M),
 }
+IMPORT["mjs"] = IMPORT["js"]; IMPORT["cjs"] = IMPORT["js"]  # .5231
 
 files = []
 for dp, dn, fn in os.walk(ROOT):
