@@ -33,8 +33,9 @@ FUNC = {
  "ps1":  re.compile(r"^\s*function\s+([A-Za-z][\w\-]*)", re.M),
  "psm1": re.compile(r"^\s*function\s+([A-Za-z][\w\-]*)", re.M),
  "py":   re.compile(r"^\s*def\s+([A-Za-z_]\w*)", re.M),
- "ts":   re.compile(r"(?:^|\s)(?:async\s+)?function\s+([A-Za-z_]\w*)|^\s*([A-Za-z_]\w*)\s*\([^)]*\)\s*[:{]", re.M),
- "js":   re.compile(r"(?:^|\s)(?:async\s+)?function\s+([A-Za-z_]\w*)", re.M),
+ # .5231 — TS/JS: declared functions, exported functions, arrow-fn consts, and classes.
+ "ts":   re.compile(r"^\s*(?:export\s+)?(?:async\s+)?function\s+([A-Za-z_]\w*)|^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_]\w*)\s*=\s*(?:async\s*)?\([^)]*\)\s*(?::\s*[^={]+)?=>|^\s*(?:export\s+)?(?:abstract\s+)?class\s+([A-Za-z_]\w*)", re.M),
+ "js":   re.compile(r"^\s*(?:export\s+)?(?:async\s+)?function\s+([A-Za-z_]\w*)|^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_]\w*)\s*=\s*(?:async\s*)?\([^)]*\)\s*=>|^\s*(?:export\s+)?class\s+([A-Za-z_]\w*)", re.M),
 }
 IMPORT = {
  "ps1":  re.compile(r"(?:Import-Module|\.\s+)\s+['\"]?([^\s'\";]+)", re.M),
