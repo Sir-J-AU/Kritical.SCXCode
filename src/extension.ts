@@ -704,8 +704,8 @@ async function cmdOpenChat(ctx: vscode.ExtensionContext) {
       panel.webview.postMessage({ type: 'fileAttached', name: `repo (${rel.length} files)`, chars: attached.length });
     } else if (msg.type === 'listMcp') {
       panel.webview.postMessage({ type: 'notice', text: mcpSummary() });
-    } else if (msg.type === 'openCodex') {
-      vscode.commands.executeCommand('kritical.scxcode.openCodex');
+    } else if (msg.type === 'scxCodex') {
+      vscode.commands.executeCommand('kritical.scxcode.scxCodex');
     } else if (msg.type === 'config') {
       const cfg = getConfig();
       panel.webview.postMessage({ type: 'config', model: cfg.defaultModel, models: getModelCatalog(), keyCount: cfg.apiKeys.length,
@@ -792,9 +792,9 @@ select option:checked { background: var(--vscode-list-activeSelectionBackground,
 </div>
 <div class="tagline">The IT &amp; IT Security Experts — if it's too hard for everyone else, just give us a call.</div>
 <div class="controls">
-  <label>Length <select id="len"><option value="800">Short</option><option value="1500">Medium</option><option value="4096">Long</option><option value="8192">Maximum</option></select></label>
-  <label>Streams <select id="streams"><option value="1">1</option><option value="2">2</option><option value="4">4</option><option value="6">6</option><option value="8">8</option></select></label>
-  <label>Context <select id="ctx"><option value="off">Off</option><option value="file">File</option><option value="file+selection">File+Sel</option><option value="workspace-tree">Workspace</option></select></label>
+  <label title="Response length cap (max output tokens): Short 800 · Medium 1500 · Long 4096 · Maximum 8192.">Length <select id="len"><option value="800">Short</option><option value="1500">Medium</option><option value="4096">Long</option><option value="8192">Maximum</option></select></label>
+  <label title="Concurrent SCX 'lens' streams to fan out and synthesise (synthetic-context muxing). 1 = single reply; higher = more voices merged into one answer, costs more tokens.">Streams <select id="streams"><option value="1">1</option><option value="2">2</option><option value="4">4</option><option value="6">6</option><option value="8">8</option></select></label>
+  <label title="How much editor context is auto-attached to each message. Off = none · File = the whole active file · File + Selection = the active file plus your highlighted selection (Sel) · Workspace = a workspace file tree summary.">Context <select id="ctx"><option value="off">Off</option><option value="file">File</option><option value="file+selection">File + Selection</option><option value="workspace-tree">Workspace</option></select></label>
   <button class="adv-btn" id="advBtn" title="Advanced options">⚙</button>
 </div>
 <div class="adv" id="adv">
@@ -931,7 +931,7 @@ advBtn.onclick = () => { advPanel.classList.toggle('open'); advBtn.classList.tog
 document.getElementById('tbUpload').onclick = () => vscode.postMessage({ type: 'uploadFile' });
 document.getElementById('tbRepo').onclick = () => vscode.postMessage({ type: 'attachRepo' });
 document.getElementById('tbMcp').onclick = () => vscode.postMessage({ type: 'listMcp' });
-document.getElementById('tbCodex').onclick = () => vscode.postMessage({ type: 'openCodex' });
+document.getElementById('tbCodex').onclick = () => vscode.postMessage({ type: 'scxCodex' });
 clearBtn.onclick = () => {
   chat.innerHTML = '';
   sessionInTokens = 0; sessionOutTokens = 0;
@@ -998,7 +998,7 @@ window.addEventListener('message', (e) => {
 // the real defaultModel (and the '…' placeholder resolves).
 vscode.postMessage({ type: 'config' });
 </script>
-<div class="footer">© 2026 Kritical Pty Ltd · Kritical SCXCode v0.1.14</div>
+<div class="footer">© 2026 Kritical Pty Ltd · Kritical SCXCode v0.1.15</div>
 </body></html>`;
 }
 
@@ -1100,8 +1100,8 @@ class KriticalChatViewProvider implements vscode.WebviewViewProvider {
         view.webview.postMessage({ type: 'fileAttached', name: `repo (${rel.length} files)`, chars: this._attached.length });
       } else if (msg.type === 'listMcp') {
         view.webview.postMessage({ type: 'notice', text: mcpSummary() });
-      } else if (msg.type === 'openCodex') {
-        vscode.commands.executeCommand('kritical.scxcode.openCodex');
+      } else if (msg.type === 'scxCodex') {
+        vscode.commands.executeCommand('kritical.scxcode.scxCodex');
       } else if (msg.type === 'config') {
         const cfg = getConfig();
         view.webview.postMessage({
@@ -1139,7 +1139,7 @@ function resolveCodexWrapper(context: vscode.ExtensionContext): string | null {
   for (const c of candidates) { try { if (c && fs.existsSync(c)) { return c; } } catch { /* next */ } }
   return null;
 }
-function cmdOpenCodex(context: vscode.ExtensionContext) {
+function cmdScxCodex(context: vscode.ExtensionContext) {
   const wrapper = resolveCodexWrapper(context);
   if (!wrapper) {
     vscode.window.showWarningMessage(
@@ -1203,7 +1203,7 @@ export function activate(context: vscode.ExtensionContext) {
     ['kritical.scxcode.explainFile', cmdExplainFile],
     ['kritical.scxcode.generateTests', cmdGenerateTests],
     ['kritical.scxcode.muxQuery', cmdMuxQuery],
-    ['kritical.scxcode.openCodex', () => cmdOpenCodex(context)],
+    ['kritical.scxcode.scxCodex', () => cmdScxCodex(context)],
     ['kritical.scxcode.checkUpdate', () => cmdCheckUpdate(context)],
   ];
   for (const [id, fn] of cmds) {
