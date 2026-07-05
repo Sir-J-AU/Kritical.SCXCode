@@ -233,7 +233,9 @@ function Switch-KritScxKey {
     $others = $candidates | Where-Object { $_.Key -ne $currentKey }
     if (-not $others) { return [pscustomobject]@{ Switched = $false; Reason = 'only one key available (already in HKCU)'; Current = $candidates[0].Prefix } }
 
-    Write-Verbose "candidates: $($candidates.Prefix -join ', '); current: $($currentKey.Substring(0, 8))"
+    # .5231 (bughunt) — $currentKey is null when SCX_API_KEY isn't in HKCU; .Substring(0,8) threw. Guard.
+    $curShown = if ($currentKey -and $currentKey.Length -ge 8) { $currentKey.Substring(0, 8) } elseif ($currentKey) { $currentKey } else { '(none set)' }
+    Write-Verbose "candidates: $($candidates.Prefix -join ', '); current: $curShown"
 
     foreach ($cand in $others) {
         Write-Verbose "probing $($cand.File) ($($cand.Prefix))..."

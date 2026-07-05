@@ -72,7 +72,10 @@ function mine(root) {
 
 function search(keywords, maxChars = 11000) {
   const d = db(); ensure(d);
-  const terms = keywords.split(/\s+/).filter(Boolean);
+  const terms = String(keywords || '').split(/\s+/).filter(Boolean);
+  // .5231 (bughunt) — empty/whitespace keywords yield no terms, which built an invalid `WHERE` clause
+  // (SQL syntax error). Return an empty result cleanly instead of throwing.
+  if (!terms.length) { console.log('[local-store] no search terms supplied — nothing to search.'); return ''; }
   const where = terms.map(() => 'path LIKE ? OR content LIKE ?').join(' OR ');
   const args = terms.flatMap((t) => [`%${t}%`, `%${t}%`]);
   const rows = d.prepare(`SELECT path, lang, content FROM files WHERE ${where} ORDER BY LENGTH(content) LIMIT 8`).all(...args);

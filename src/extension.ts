@@ -54,9 +54,13 @@ function getConfig() {
     const k = process.env[`SCX_API_KEY_${i}`];
     if (k && !keys.includes(k)) keys.push(k);
   }
+  // .5231 (bughunt-confirmed) — rotate the STABLE deduped key list so the switch-selected key is
+  // primary, WITHOUT mutating process.env.SCX_API_KEY (which corrupted the set via re-dedup + lost keys).
+  const rot = keys.length ? _keyRotation % keys.length : 0;
+  const rotatedKeys = rot ? keys.slice(rot).concat(keys.slice(0, rot)) : keys;
   return {
-    apiKey: primary,
-    apiKeys: keys,
+    apiKey: rotatedKeys[0] || primary,
+    apiKeys: rotatedKeys,
     baseUrl: c.get<string>('baseUrl', 'https://api.scx.ai'),
     defaultModel: c.get<string>('defaultModel', 'MiniMax-M2.7'),
     autocompleteModel: c.get<string>('autocompleteModel', 'coder'),
@@ -416,7 +420,10 @@ async function scxPost(model: string, messages: ScxMessage[], maxTokens = 800, k
   if (!useKey) throw new Error('SCX_API_KEY not set. Configure kritical.scxcode.apiKey or set HKCU env SCX_API_KEY.');
   model = normalizeModelId(model);       // .5231 — match the endpoint's exact id (direct vs proxy casing)
   publishCurrentModel(model);            // .5231 — share the live model with the codex wrapper
-  const body: ScxCompletionRequest = { model, messages, max_tokens: maxTokens, temperature };
+  // .5231 (bughunt-confirmed) — clamp to SCX's proven [0,2] ceiling so an out-of-range config/slider
+  // value can't produce a hard 400 from the endpoint.
+  const temp = Math.max(0, Math.min(2, Number.isFinite(temperature) ? temperature : 0.2));
+  const body: ScxCompletionRequest = { model, messages, max_tokens: maxTokens, temperature: temp };
   if (systemPrompt) body.system = systemPrompt;
 
   return new Promise((resolve, reject) => {
@@ -770,6 +777,9 @@ async function cmdOpenChat(ctx: vscode.ExtensionContext) {
         history.push({ role: 'assistant', content: replyText });
         panel.webview.postMessage({ type: 'reply', text: replyText, model: modelUsed, keyIndex, shards, tokensIn: res.usage.input_tokens, tokensOut: res.usage.output_tokens, autoContextChars: ctxPrefix.length });
       } catch (e) {
+        // .5231 (bughunt-confirmed) — pop the orphaned user turn so a failed send doesn't leave two
+        // consecutive user roles in history → next send 400s "roles must alternate" and bricks the chat.
+        if (history.length && history[history.length - 1].role === 'user') history.pop();
         panel.webview.postMessage({ type: 'error', error: (e as Error).message });
       }
     } else if (msg.type === 'clear') {
@@ -778,6 +788,20 @@ async function cmdOpenChat(ctx: vscode.ExtensionContext) {
     } else if (msg.type === 'pickModel') {
       await vscode.commands.executeCommand('kritical.scxcode.pickModel');
       panel.webview.postMessage({ type: 'config', model: getConfig().defaultModel, keyCount: getConfig().apiKeys.length });
+    } else if (msg.type === 'switchKey') {
+      // .5231 (bughunt-confirmed) — the shared chat HTML renders a 'Switch SCX key' button on 429s;
+      // the panel was missing this handler entirely (only the sidebar had it), so the button was dead.
+      try {
+        const cfg = getConfig();
+        if (cfg.apiKeys.length < 2) {
+          panel.webview.postMessage({ type: 'error', error: 'Only one SCX key available (SCX_API_KEY). Set SCX_API_KEY_2..9 in HKCU or run Switch-KritScxKey.' });
+        } else {
+          _keyRotation = (_keyRotation + 1) % cfg.apiKeys.length;
+          panel.webview.postMessage({ type: 'keySwitched', newKeyIndex: _keyRotation + 1 });
+        }
+      } catch (e) {
+        panel.webview.postMessage({ type: 'error', error: 'Key switch failed: ' + (e as Error).message });
+      }
     } else if (msg.type === 'setConfig') {
       try { await vscode.workspace.getConfiguration('kritical.scxcode').update(msg.key, msg.value, vscode.ConfigurationTarget.Global); }
       catch (e) { panel.webview.postMessage({ type: 'error', error: 'Setting update failed: ' + (e as Error).message }); }
@@ -1207,6 +1231,9 @@ class KriticalChatViewProvider implements vscode.WebviewViewProvider {
             autoContextChars: ctx.length,
           });
         } catch (e) {
+          // .5231 (bughunt-confirmed) — pop the orphaned user turn so a failed send doesn't leave two
+          // consecutive user roles → next send 400s "roles must alternate" and bricks the conversation.
+          if (this._history.length && this._history[this._history.length - 1].role === 'user') this._history.pop();
           view.webview.postMessage({ type: 'error', error: (e as Error).message });
         }
       } else if (msg.type === 'clear') {
@@ -1223,13 +1250,11 @@ class KriticalChatViewProvider implements vscode.WebviewViewProvider {
             view.webview.postMessage({ type: 'error', error: 'Only one SCX key available (SCX_API_KEY). Set SCX_API_KEY_2..9 in HKCU or run Switch-KritScxKey.' });
             return;
           }
-          // .5211 (DeepSeek-flagged, verified) — actually ROTATE through all keys instead of
-          // always jumping to apiKeys[1]/index 2. Advance a persistent pointer, wrapping around.
+          // .5231 (bughunt-confirmed) — advance the rotation pointer ONLY. getConfig() now rotates the
+          // stable key list by _keyRotation, so we must NOT mutate process.env.SCX_API_KEY (that re-dedup
+          // dropped the promoted key and shrank the set). Pointer advance = next key becomes primary.
           _keyRotation = (_keyRotation + 1) % cfg.apiKeys.length;
-          const next = cfg.apiKeys[_keyRotation];
-          const newIndex = _keyRotation + 1;
-          process.env.SCX_API_KEY = next;
-          view.webview.postMessage({ type: 'keySwitched', newKeyIndex: newIndex });
+          view.webview.postMessage({ type: 'keySwitched', newKeyIndex: _keyRotation + 1 });
         } catch (e) {
           view.webview.postMessage({ type: 'error', error: 'Key switch failed: ' + (e as Error).message });
         }

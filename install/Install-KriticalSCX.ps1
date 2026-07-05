@@ -30,7 +30,9 @@ function Show-Status {
   Write-Host "  $(Ok (Get-Command python -ea 0))  python $(try{(python --version) 2>&1}catch{})"
   Write-Host "  $(Ok (Get-Command code-insiders -ea 0))  code-insiders"
   Write-Host "  $(Ok (Test-Path $vpy))  litellm venv"
-  Write-Host "  $(Ok (Test-Path $vpy)) litellm installed  $(if(Test-Path $vpy){try{& $vpy -c "import litellm;print(litellm.__version__)" 2>$null}catch{}})"
+  # .5231 (bughunt) — "installed" must actually import litellm, not re-use the venv-exists predicate.
+  $litellmVer = if (Test-Path $vpy) { try { & $vpy -c "import litellm;print(litellm.__version__)" 2>$null } catch {} }
+  Write-Host "  $(Ok ([bool]$litellmVer)) litellm installed  $litellmVer"
   Write-Host "  $(Ok (Test-Path 'C:\KriticalSCX\dist\Kritical.SCXCodex\bin\Kritical.SCXCodex.exe'))  Kritical.SCXCodex.exe"
   Write-Host "  $(Ok (Test-Path 'C:\KriticalSCX\dist\Kritical.SCXCodex\.kritical-scxcodex-build.receipt.json'))  Kritical.SCXCodex build receipt"
   $ext = try { (code-insiders --list-extensions) -match 'plugin-control-panel' } catch { $false }

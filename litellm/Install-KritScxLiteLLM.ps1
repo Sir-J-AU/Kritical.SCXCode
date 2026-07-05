@@ -59,7 +59,7 @@ $logFile = Join-Path $env:LOCALAPPDATA 'Kritical\SCXCode\litellm.log'
 Write-Host ''
 Write-Host '  ╔═══════════════════════════════════════════════════════════╗' -ForegroundColor Cyan
 Write-Host '  ║ Kritical.SCX.LiteLLM — universal front for SCX             ║' -ForegroundColor Cyan
-Write-Host "  ║ Mode: $Mode".PadRight(60) + '║' -ForegroundColor Cyan
+Write-Host ("  ║ Mode: $Mode".PadRight(60) + '║') -ForegroundColor Cyan   # .5231 — parenthesise or '+' binds as extra Write-Host args
 Write-Host '  ║ Joshua Finley · Kritical Pty Ltd · sales@kritical.net     ║' -ForegroundColor Cyan
 Write-Host '  ║ ph. 1300 274 655                                          ║' -ForegroundColor Cyan
 Write-Host '  ╚═══════════════════════════════════════════════════════════╝' -ForegroundColor Cyan
@@ -77,11 +77,13 @@ function Test-KritLiteLLMHealth {
 }
 
 function Get-KritLiteLLMPid {
+    # .5231 (bughunt-confirmed) — $pid is a READ-ONLY automatic variable (current process id);
+    # assigning to it threw 'Cannot overwrite variable PID'. Use $procId.
     if (Test-Path $pidFile) {
         try {
-            $pid = [int](Get-Content -LiteralPath $pidFile -Raw).Trim()
-            $p = Get-Process -Id $pid -ErrorAction SilentlyContinue
-            if ($p) { return $pid }
+            $procId = [int](Get-Content -LiteralPath $pidFile -Raw).Trim()
+            $p = Get-Process -Id $procId -ErrorAction SilentlyContinue
+            if ($p) { return $procId }
         } catch {}
     }
     return $null
@@ -111,8 +113,8 @@ if ($Mode -eq 'Status') {
     Write-Host ''
 
     Write-Host '--- Proxy state ---' -ForegroundColor Cyan
-    $pid = Get-KritLiteLLMPid
-    Write-Host ('  PID file:           ' + $(if ($pid) { "$pidFile (PID=$pid)" } else { 'no live PID' })) -ForegroundColor $(if ($pid) { 'Green' } else { 'Yellow' })
+    $litellmPid = Get-KritLiteLLMPid   # .5231 — never assign to read-only automatic $pid
+    Write-Host ('  PID file:           ' + $(if ($litellmPid) { "$pidFile (PID=$litellmPid)" } else { 'no live PID' })) -ForegroundColor $(if ($litellmPid) { 'Green' } else { 'Yellow' })
     $healthy = Test-KritLiteLLMHealth -Port $Port -BindHost $BindHost
     Write-Host ('  /health/liveliness: ' + $(if ($healthy) { "http://$BindHost`:$Port — HEALTHY" } else { 'unreachable' })) -ForegroundColor $(if ($healthy) { 'Green' } else { 'Yellow' })
     Write-Host ''

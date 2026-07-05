@@ -91,8 +91,16 @@ if (-not $NoShim -and -not (Test-ShimHealthy)) {
     $node = (Get-Command node -ErrorAction SilentlyContinue).Source
     if (-not $node) { Write-Host 'node not found — cannot start the agentic shim. Install Node >= 20, or use -NoShim for chat-only.' -ForegroundColor Red; exit 4 }
     Write-Host "  Starting SCX agentic shim on 127.0.0.1:$shimPort ..." -ForegroundColor DarkGray
-    Start-Process node -ArgumentList "`"$shimScript`"" -WindowStyle Hidden | Out-Null
+    # .5231 (bughunt-confirmed) — Start-Process inherits the CURRENT process env, so explicitly pin the
+    # values the shim reads (KRIT_SHIM_PORT / KRIT_SHIM_UPSTREAM / SCX_API_KEY). Without this the shim
+    # falls back to ITS OWN defaults — so a non-default -ShimPort silently mismatches the health probe,
+    # and the HKCU-resolved SCX key may never reach the child (breaking auth on a fresh session).
+    $env:SCX_API_KEY       = $scxKey
+    $env:KRIT_SHIM_PORT    = "$shimPort"
+    $env:KRIT_SHIM_UPSTREAM = $scxDirect
+    $shimProc = Start-Process node -ArgumentList "`"$shimScript`"" -WindowStyle Hidden -PassThru
     $shimStartedByUs = $true
+    $shimPid = $shimProc.Id   # .5231 — track the exact PID we launched for a safe teardown
     for ($i = 0; $i -lt 15 -and -not (Test-ShimHealthy); $i++) { Start-Sleep -Milliseconds 400 }
     if (-not (Test-ShimHealthy)) { Write-Host '  shim did not become healthy — falling back to direct (chat-only).' -ForegroundColor Yellow; $baseUrl = $scxDirect; $NoShim = $true }
 }
@@ -175,8 +183,14 @@ try {
     $exit = $LASTEXITCODE
 } finally {
     # HR29 kill switch: if we started the shim for this session, take it down again.
-    if ($shimStartedByUs) {
-        try { $p = (Get-NetTCPConnection -LocalPort $shimPort -State Listen -ErrorAction SilentlyContinue).OwningProcess | Select-Object -First 1; if ($p) { Stop-Process -Id $p -Force -ErrorAction SilentlyContinue } } catch {}
+    # .5231 (bughunt-confirmed) — kill the EXACT node PID we launched, with an identity check. The old
+    # code killed whoever owned $shimPort at teardown — if our shim had already died and another process
+    # (or an unrelated dev server) grabbed 4199, it would force-kill that innocent process.
+    if ($shimStartedByUs -and $shimPid) {
+        try {
+            $sp = Get-Process -Id $shimPid -ErrorAction SilentlyContinue
+            if ($sp -and $sp.ProcessName -eq 'node') { Stop-Process -Id $shimPid -Force -ErrorAction SilentlyContinue }
+        } catch {}
     }
 }
 exit $exit

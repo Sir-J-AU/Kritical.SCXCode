@@ -31,7 +31,17 @@ Write-Host "`n=== RESTORING working Claude ===" -ForegroundColor Green
 # Kill the LiteLLM proxy if listening. Do not inspect or mutate native provider env.
 try {
   $pids = (Get-NetTCPConnection -LocalPort $PROXY_PORT -State Listen -ErrorAction Stop).OwningProcess | Select-Object -Unique
-  foreach ($p in $pids) { Write-Host "  stopping proxy pid $p" -ForegroundColor Yellow; Stop-Process -Id $p -Force -ErrorAction SilentlyContinue }
+  foreach ($p in $pids) {
+    $proc = Get-Process -Id $p -ErrorAction SilentlyContinue
+    # .5231 (bughunt) — verify the :$PROXY_PORT owner really is the LiteLLM proxy (python/litellm) before
+    # force-killing. The old code nuked whatever held the port — an unrelated process would be collateral.
+    if ($proc -and $proc.ProcessName -match 'python|litellm') {
+      Write-Host "  stopping proxy pid $p ($($proc.ProcessName))" -ForegroundColor Yellow
+      Stop-Process -Id $p -Force -ErrorAction SilentlyContinue
+    } elseif ($proc) {
+      Write-Host "  :$PROXY_PORT held by '$($proc.ProcessName)' (pid $p) — not a LiteLLM proxy; leaving it alone." -ForegroundColor DarkYellow
+    }
+  }
 } catch { Write-Host "  no proxy listening on :$PROXY_PORT" }
 
 # Verify Claude binary responds.

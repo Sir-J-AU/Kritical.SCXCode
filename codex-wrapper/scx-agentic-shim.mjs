@@ -122,7 +122,12 @@ const server = http.createServer((req, res) => {
         const errText = await upstream.text();
         if (isPlanGateError(upstream.status, errText)) {
           log('[retry] plan-gate — dropping server tools and retrying'); T.retried = true; T.plan_gate = true;
-          upstream = await call(JSON.stringify(transformRequestBody(parsed, true)));
+          const retryBody = transformRequestBody(parsed, true);
+          // .5231 (bughunt) — telemetry must reflect the ACTUAL retried payload (server tools dropped),
+          // not the first attempt's tools computed at lines 113-116.
+          T.tools_out = (retryBody.tools || []).map((t) => t && t.type);
+          T.flattened = JSON.stringify(T.tools_in) !== JSON.stringify(T.tools_out);
+          upstream = await call(JSON.stringify(retryBody));
         } else {
           res.writeHead(upstream.status, { 'content-type': upstream.headers.get('content-type') || 'application/json' });
           res.end(errText);
@@ -130,6 +135,17 @@ const server = http.createServer((req, res) => {
           telem({ ...T, status: upstream.status, latency_ms: Date.now() - t0, error: errText.slice(0, 200) });
           return;
         }
+      }
+
+      // .5231 (bughunt) — if the plan-gate RETRY itself failed (e.g. the upstream 502 the operator saw),
+      // return it cleanly with logging + telemetry instead of opaquely streaming the error via the byte reader.
+      if (T.retried && upstream.status >= 400) {
+        const errText = await upstream.text();
+        res.writeHead(upstream.status, { 'content-type': upstream.headers.get('content-type') || 'application/json' });
+        res.end(errText);
+        log('[resp.retry]', upstream.status, errText.slice(0, 160));
+        telem({ ...T, status: upstream.status, latency_ms: Date.now() - t0, error: errText.slice(0, 200) });
+        return;
       }
 
       res.writeHead(upstream.status, { 'content-type': upstream.headers.get('content-type') || 'application/json' });

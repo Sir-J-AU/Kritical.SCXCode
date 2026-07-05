@@ -22,7 +22,8 @@ def scx(messages, max_tokens=700, temperature=0.4):
     return txt, (u.get("prompt_tokens", 0), u.get("completion_tokens", 0)), time.time() - t0
 
 # ---- synthetic context: retrieve real source + symbols from the DB ----
-def retrieve_context(keywords, max_chars=11000):
+def retrieve_context(keywords, max_chars=90000):   # .5231 (bughunt) — was 11000 (~2.7k tok), far under
+                                                     # gpt-oss-120b's real ~108k ceiling; silently dropped context.
     cn = pyodbc.connect(CONN, timeout=15); c = cn.cursor()
     like = " OR ".join(["path LIKE ?"] * len(keywords))
     c.execute(f"SELECT path, CAST(DECOMPRESS(content_gz) AS NVARCHAR(MAX)) FROM dbo.LensSource WHERE {like} ORDER BY byte_len",
@@ -57,30 +58,43 @@ def run():
 
     # ---- BASELINE: naive single-shot, NO context, NO mux ----
     print("\n== BASELINE (single-shot, no context, no mux) ==")
-    base_txt, base_tok, base_t = scx([{"role": "user", "content": QUESTION}], max_tokens=500)
-    print(f"   {base_t:.1f}s · {base_tok[0]}→{base_tok[1]} tok")
-    print("   " + base_txt.strip().replace("\n", "\n   ")[:600])
+    try:
+        base_txt, base_tok, base_t = scx([{"role": "user", "content": QUESTION}], max_tokens=500)
+        print(f"   {base_t:.1f}s · {base_tok[0]}→{base_tok[1]} tok")
+        print("   " + base_txt.strip().replace("\n", "\n   ")[:600])
+    except Exception as e:  # .5231 (bughunt) — a baseline failure must not abort the mux demonstration
+        base_txt, base_tok = "", (0, 0)
+        print(f"   baseline call failed: {e}")
 
     # ---- SYNTHETIC-CONTEXT MULTI-STREAM: N parallel lenses over the DB context ----
     print(f"\n== SYNTHETIC-CONTEXT MULTI-STREAM ({len(LENSES)} parallel lenses over DB context) ==")
     sys_ctx = f"You are answering strictly from this retrieved Kritical SCX source context:\n\n{ctx}"
     def one(lens):
         name, focus = lens
-        txt, tok, t = scx([
-            {"role": "system", "content": sys_ctx},
-            {"role": "user", "content": f"{QUESTION}\n\n[Lens for THIS stream: {focus}]"},
-        ], max_tokens=550)
-        return name, txt, tok, t
+        # .5231 (bughunt) — isolate each stream: a non-2xx / timeout raises HTTPError inside urlopen,
+        # and list(ex.map(...)) would re-raise it and discard EVERY other successful stream. Catch here.
+        try:
+            txt, tok, t = scx([
+                {"role": "system", "content": sys_ctx},
+                {"role": "user", "content": f"{QUESTION}\n\n[Lens for THIS stream: {focus}]"},
+            ], max_tokens=550)
+            return name, txt, tok, t, None
+        except Exception as e:
+            return name, "", (0, 0), 0.0, str(e)
     t0 = time.time()
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(LENSES)) as ex:
         streams = list(ex.map(one, LENSES))
     fan_t = time.time() - t0
     fan_tok = sum(s[2][0] + s[2][1] for s in streams)
-    for name, txt, tok, t in streams:
-        print(f"   ✓ stream '{name}' — {t:.1f}s · {tok[1]} out tok")
+    for name, txt, tok, t, err in streams:
+        print(f"   ✓ stream '{name}' — {t:.1f}s · {tok[1]} out tok" if not err else f"   ✗ stream '{name}' FAILED: {err}")
 
-    # ---- SYNTHESIZE ----
-    merged = "\n\n".join(f"--- stream: {n} ---\n{txt}" for n, txt, _, _ in streams)
+    # ---- SYNTHESIZE (only the streams that succeeded) ----
+    ok_streams = [s for s in streams if not s[4] and s[1].strip()]
+    merged = "\n\n".join(f"--- stream: {n} ---\n{txt}" for n, txt, _, _, _ in ok_streams)
+    if not ok_streams:
+        print("\n== all lens streams failed — cannot synthesise ==")
+        return
     synth_txt, synth_tok, synth_t = scx([
         {"role": "system", "content": sys_ctx},
         {"role": "user", "content": f"Question:\n{QUESTION}\n\nBelow are {len(LENSES)} parallel analyses of the SAME retrieved code. "
