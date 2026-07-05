@@ -106,7 +106,7 @@ land in Path C when the settings-file location on Windows is confirmed.
 ## Path C (Kritical SCX standalone extension) — future scaffold
 
 **Why exists**: Path A/B are 95% of what Kritical wants but don't do:
-- Kritical branding (logo #13365C + accent #F2B500)
+- Kritical branding (logo #13365C + accent #15AFD1 cyan, per HR13)
 - Auto-failover chain (SCX → SCX-other-model → Claude Code → Codex → OpenRouter)
 - Multiple SCX keys for load-balance (ben + huzaifa)
 - Env-controlled autocompact toggles matching wave supervisor
