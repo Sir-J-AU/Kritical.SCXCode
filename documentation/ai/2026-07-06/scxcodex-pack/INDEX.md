@@ -7,6 +7,8 @@ Date: 2026-07-06 Australia/Sydney
 - `documentation\ai\2026-07-06\scxcodex-pack\SCXCODEX-PACK-HANDOFF-2026-07-06.md`
 - `documentation\ai\2026-07-06\scxcodex-pack\SCXCODEX-DEDICATED-SUBPROJECT-PLAN-2026-07-06.md`
 - `documentation\ai\2026-07-06\scxcodex-pack\SCXCODEX-FULL-ARCHITECTURE-HANDOVER-2026-07-06.md`
+- `docs\AGENTMUX.md`
+- `docs\MUX.md`
 
 ## Built Artifact
 
@@ -36,6 +38,8 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\codex-wrapper\pack\Build-Kritica
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\codex-wrapper\pack\Apply-KriticalCodexPack.ps1 -Mode Status
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\codex-wrapper\pack\Update-Codex.ps1
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\install\Invoke-KritScxEndToEndBugHunt.ps1 -Mode Smoke -SkipLive
+python .\mux\Invoke-KritScxMuxMatrix.py --init-eval-schema
+python .\mux\Invoke-KritScxMuxMatrix.py -q "<question>" --models MiniMax-M2.7 DeepSeek-V3.1 gpt-oss-120b Qwen3-32B gemma-4-31B-it --max-out 4096 --report out\matrix.md
 ```
 
 ## Safety Rule

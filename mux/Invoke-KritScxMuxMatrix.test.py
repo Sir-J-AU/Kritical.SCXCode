@@ -5,7 +5,10 @@ Stdlib unittest (zero deps) so it runs anywhere. The module has an `if __name__ 
 guard, so loading it by path does not fire main().
 """
 import importlib.util
+import os
 import pathlib
+import sqlite3
+import tempfile
 import unittest
 
 MODULE_PATH = pathlib.Path(__file__).parent / "Invoke-KritScxMuxMatrix.py"
@@ -26,6 +29,11 @@ class TestModelCeilings(unittest.TestCase):
                 self.assertGreater(spec[k], 0)
             self.assertEqual(spec["chars_per_token"], 4)
 
+    def test_default_model_set_has_at_least_five(self):
+        self.assertGreaterEqual(len(mux.MODEL_CEILINGS), 5)
+        self.assertIn("MiniMax-M2.7", mux.MODEL_CEILINGS)
+        self.assertIn("json_mode", mux.MODEL_CEILINGS["MiniMax-M2.7"]["features"])
+
 
 class TestContextCharBudget(unittest.TestCase):
     def test_minimax_gets_more_than_gptoss(self):
@@ -43,6 +51,10 @@ class TestContextCharBudget(unittest.TestCase):
 
     def test_never_negative(self):
         self.assertGreaterEqual(mux.context_char_budget("DeepSeek-V3.1", "hi", 700), 0)
+
+    def test_default_max_out_preserves_minimax_headroom(self):
+        budget = mux.context_char_budget("MiniMax-M2.7", "structured output please", 4096)
+        self.assertGreater(budget, 700000)
 
 
 class TestTrimToBudget(unittest.TestCase):
@@ -65,6 +77,45 @@ class TestTrimToBudget(unittest.TestCase):
         self.assertEqual(text, "")
         self.assertEqual(used, 0)
         self.assertEqual(included, [])
+
+
+class TestEmpiricalRouting(unittest.TestCase):
+    def test_schema_and_score_routing(self):
+        with tempfile.TemporaryDirectory() as td:
+            db = os.path.join(td, "eval.db")
+            mux.ensure_eval_schema_sqlite(db)
+            con = sqlite3.connect(db)
+            try:
+                con.execute(
+                    "INSERT INTO model_eval_results(eval_id, model_id, benchmark_name, task_type, score) "
+                    "VALUES('e1', 'gpt-oss-120b', 'bench', 'structured_coding', 0.1)"
+                )
+                con.execute(
+                    "INSERT INTO model_eval_results(eval_id, model_id, benchmark_name, task_type, score) "
+                    "VALUES('e2', 'MiniMax-M2.7', 'bench', 'structured_coding', 0.9)"
+                )
+                con.commit()
+            finally:
+                con.close()
+            ranked = mux.route_models_by_empirical_score(
+                db, ["gpt-oss-120b", "MiniMax-M2.7", "DeepSeek-V3.1"], "structured_coding", "bench",
+            )
+            self.assertEqual(ranked[:2], ["MiniMax-M2.7", "gpt-oss-120b"])
+            self.assertIn("DeepSeek-V3.1", ranked)
+
+    def test_score_formula_penalises_latency_cost_and_failure(self):
+        fast = mux.model_capability_score(0.8, latency_ms=100, cost_estimate=0.01, failure_rate=0.0)
+        slow = mux.model_capability_score(0.8, latency_ms=10000, cost_estimate=0.01, failure_rate=0.2)
+        self.assertGreater(fast, slow)
+
+
+class TestTransportDecoding(unittest.TestCase):
+    def test_reasoning_content_fallback(self):
+        payload = {"choices": [{"message": {"reasoning_content": "usable reasoning answer"}}]}
+        self.assertEqual(mux.message_text(payload), "usable reasoning answer")
+
+    def test_sql_hex_decode(self):
+        self.assertEqual(mux.decode_sql_hex_text("68656c6c6f"), "hello")
 
 
 if __name__ == "__main__":

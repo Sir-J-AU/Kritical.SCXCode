@@ -16,7 +16,7 @@ Per-stream error isolation: any model failing (HTTP 4xx/5xx / timeout / transpor
 as failed and the run continues. HR1: SCX_API_KEY only — no other provider key, ever.
 
 Reads corpus from the SHIPPABLE local SQLite store (%USERPROFILE%/.kritical-scx/scxcode-store.db,
-`files` table: path, lang, content) via Python's stdlib sqlite3 — or from a --corpus directory.
+`files` table: path, lang, content), SQL Server KriticalSCXCodeStore, or a --corpus directory.
 
     Author : Joshua Finley
     (c) 2026 Kritical Pty Ltd. All rights reserved.
@@ -36,6 +36,8 @@ DEFAULT_DB = os.path.join(
     os.environ.get("USERPROFILE", os.path.expanduser("~")),
     ".kritical-scx", "scxcode-store.db",
 )
+DEFAULT_MSSQL_SERVER = r".\SQLEXPRESS"
+DEFAULT_MSSQL_DATABASE = "KriticalSCXCodeStore"
 
 # ---------------------------------------------------------------------------
 # MODEL_CEILINGS — the REAL usable input ceilings proven by needle-recall in
@@ -48,28 +50,45 @@ DEFAULT_DB = os.path.join(
 #   chars_per_token : conservative bytes->tokens factor (task says chars ~= tokens*4)
 # ---------------------------------------------------------------------------
 MODEL_CEILINGS = {
-    "DeepSeek-V3.1": {
-        "real_ctx_tokens": 129000,   # advertised 131,072 — matches; needle recalled at every size
-        "reserve_out": 1500,
-        "safety_tokens": 2000,
-        "chars_per_token": 4,
-    },
     "MiniMax-M2.7": {
         "real_ctx_tokens": 195000,   # advertised 192,000 — EXCEEDS; real hard ceiling ~196,608
-        "reserve_out": 1500,
+        "reserve_out": 4096,
         "safety_tokens": 2000,
         "chars_per_token": 4,
+        "features": ["tools", "reasoning", "json_mode"],
+    },
+    "DeepSeek-V3.1": {
+        "real_ctx_tokens": 129000,   # advertised 131,072 — matches; needle recalled at every size
+        "reserve_out": 2500,
+        "safety_tokens": 2000,
+        "chars_per_token": 4,
+        "features": ["tools", "json_mode"],
     },
     "gpt-oss-120b": {
         "real_ctx_tokens": 108000,   # advertised 131,072 — BELOW; deployment caps input at ~108k
-        "reserve_out": 1500,
+        "reserve_out": 4096,
         "safety_tokens": 2000,
         "chars_per_token": 4,
+        "features": ["reasoning"],
+    },
+    "Qwen3-32B": {
+        "real_ctx_tokens": 32000,
+        "reserve_out": 2048,
+        "safety_tokens": 1200,
+        "chars_per_token": 4,
+        "features": ["tools", "json_mode"],
+    },
+    "gemma-4-31B-it": {
+        "real_ctx_tokens": 128000,
+        "reserve_out": 2048,
+        "safety_tokens": 2000,
+        "chars_per_token": 4,
+        "features": ["json_mode"],
     },
 }
 
-# Model that fuses the per-model answers. DeepSeek-V3.1 did the synthesis in the proof run.
-SYNTH_MODEL = "DeepSeek-V3.1"
+# Model that fuses the per-model answers. MiniMax is the default strong structured-output reasoner.
+SYNTH_MODEL = "MiniMax-M2.7"
 
 
 def context_char_budget(model, question, max_out):
@@ -104,7 +123,107 @@ def trim_to_budget(blocks, char_budget):
 
 
 # ---------------------------------------------------------------------------
-# Corpus retrieval — shippable local SQLite store, OR a --corpus directory.
+# Empirical model routing — measured score beats marketing metadata.
+# ---------------------------------------------------------------------------
+MODEL_EVAL_SCHEMA = """
+CREATE TABLE IF NOT EXISTS model_eval_results (
+    eval_id             TEXT PRIMARY KEY,
+    model_id            TEXT NOT NULL,
+    benchmark_name      TEXT NOT NULL,
+    task_type           TEXT NOT NULL,
+    score               REAL NOT NULL,
+    latency_ms          INTEGER,
+    cost_estimate       REAL,
+    notes               TEXT,
+    created_at          TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_model_eval_route
+ON model_eval_results(model_id, task_type, benchmark_name, created_at);
+"""
+
+
+def ensure_eval_schema_sqlite(db_path):
+    """Create the portable model_eval_results table in the SQLite control plane."""
+    os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
+    con = sqlite3.connect(db_path)
+    try:
+        con.executescript(MODEL_EVAL_SCHEMA)
+        con.commit()
+    finally:
+        con.close()
+
+
+def model_capability_score(quality, latency_ms=None, cost_estimate=None, failure_rate=0.0,
+                           quality_weight=1.0, latency_weight=0.0001,
+                           cost_weight=1.0, failure_weight=1.0):
+    """Score = quality_weight*quality - latency_weight*latency - cost_weight*cost - failure_weight*failure_rate."""
+    return (
+        quality_weight * float(quality)
+        - latency_weight * float(latency_ms or 0)
+        - cost_weight * float(cost_estimate or 0)
+        - failure_weight * float(failure_rate or 0)
+    )
+
+
+def route_models_by_empirical_score(db_path, candidate_models, task_type,
+                                    benchmark_name=None, limit=None):
+    """Order candidate models by latest measured score for the requested task_type.
+
+    Models without matching eval rows remain eligible and keep their configured order after
+    measured models. This makes routing empirical where evidence exists, but never brittle.
+    """
+    if not os.path.exists(db_path):
+        return list(candidate_models[:limit] if limit else candidate_models)
+    con = sqlite3.connect(db_path)
+    try:
+        clauses = ["task_type = ?"]
+        args = [task_type]
+        if benchmark_name:
+            clauses.append("benchmark_name = ?")
+            args.append(benchmark_name)
+        placeholders = ",".join("?" for _ in candidate_models)
+        clauses.append(f"model_id IN ({placeholders})")
+        args.extend(candidate_models)
+        cur = con.execute(
+            "SELECT model_id, score, created_at FROM model_eval_results "
+            f"WHERE {' AND '.join(clauses)} "
+            "ORDER BY score DESC, created_at DESC",
+            args,
+        )
+        seen, ranked = set(), []
+        for model_id, _score, _created_at in cur.fetchall():
+            if model_id not in seen:
+                seen.add(model_id)
+                ranked.append(model_id)
+        ranked.extend([m for m in candidate_models if m not in seen])
+        return ranked[:limit] if limit else ranked
+    except sqlite3.DatabaseError:
+        return list(candidate_models[:limit] if limit else candidate_models)
+    finally:
+        con.close()
+
+
+def message_text(payload):
+    """Read normal content first, then reasoning_content for reasoning-heavy models."""
+    msg = (payload.get("choices") or [{}])[0].get("message", {}) or {}
+    return msg.get("content") or msg.get("reasoning_content") or ""
+
+
+def decode_sql_hex_text(value):
+    """Decode SQL Server CONVERT(VARCHAR(MAX), DECOMPRESS(varbinary), 2) hex text."""
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    text = str(value)
+    try:
+        return bytes.fromhex(text).decode("utf-8", errors="replace")
+    except ValueError:
+        return text
+
+
+# ---------------------------------------------------------------------------
+# Corpus retrieval — shippable local SQLite store, SQL Server, OR a --corpus directory.
 # ---------------------------------------------------------------------------
 def retrieve_from_sqlite(db_path, keywords, max_files=200):
     """Pull matching (path, lang, content) rows from the local SQLite `files` table.
@@ -128,6 +247,39 @@ def retrieve_from_sqlite(db_path, keywords, max_files=200):
         return cur.fetchall()
     finally:
         con.close()
+
+
+def retrieve_from_mssql(server, database, keywords, max_files=200):
+    """Pull matching rows from SQL Server KriticalSCXCodeStore.dbo.LensSource."""
+    try:
+        import pyodbc
+    except ImportError as exc:
+        raise RuntimeError("pyodbc is required for --store mssql") from exc
+    conn = (
+        "DRIVER={ODBC Driver 18 for SQL Server};"
+        f"SERVER={server};DATABASE={database};"
+        "Trusted_Connection=yes;Encrypt=no;"
+    )
+    cn = pyodbc.connect(conn, timeout=15)
+    try:
+        cur = cn.cursor()
+        cur.execute(
+            f"SELECT TOP {int(max_files) * 5} path, ext, "
+            "CONVERT(VARCHAR(MAX), DECOMPRESS(content_gz), 2) AS content_hex "
+            "FROM dbo.LensSource ORDER BY byte_len",
+        )
+        rows = []
+        lowered_keywords = [keyword.lower() for keyword in keywords]
+        for path, ext, content_hex in cur.fetchall():
+            content = decode_sql_hex_text(content_hex)
+            haystack = f"{path}\n{content}".lower()
+            if any(keyword in haystack for keyword in lowered_keywords):
+                rows.append((path, (ext or "").lstrip("."), content))
+                if len(rows) >= max_files:
+                    break
+        return rows
+    finally:
+        cn.close()
 
 
 def retrieve_from_corpus_dir(corpus_dir, keywords, max_files=200):
@@ -191,7 +343,7 @@ def scx_call(api_key, model, messages, max_tokens=700, temperature=0.4, timeout=
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         payload = json.loads(resp.read())
     latency = time.time() - t0
-    text = (payload.get("choices") or [{}])[0].get("message", {}).get("content") or ""
+    text = message_text(payload)
     usage = payload.get("usage", {}) or {}
     return text, (usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0)), latency
 
@@ -372,15 +524,31 @@ def build_arg_parser():
     p.add_argument("-k", "--keywords", nargs="+",
                    default=["scx-agentic-shim", "SCX-AGENTIC-BRIDGE"],
                    help="Keyword(s) selecting corpus files (path OR content match).")
+    p.add_argument("--store", choices=["sqlite", "mssql", "dir"], default="sqlite",
+                   help="Corpus/control-plane backend (default: sqlite).")
     p.add_argument("--db", default=DEFAULT_DB,
-                   help=f"Local SQLite store path (default: {DEFAULT_DB}).")
+                   help=f"SQLite store path (default: {DEFAULT_DB}). Also holds model_eval_results.")
+    p.add_argument("--mssql-server", default=DEFAULT_MSSQL_SERVER,
+                   help=f"SQL Server instance for --store mssql (default: {DEFAULT_MSSQL_SERVER}).")
+    p.add_argument("--mssql-database", default=DEFAULT_MSSQL_DATABASE,
+                   help=f"SQL Server database for --store mssql (default: {DEFAULT_MSSQL_DATABASE}).")
     p.add_argument("--corpus", default=None,
-                   help="Directory to scan INSTEAD of the SQLite store.")
+                   help="Directory to scan. Implies --store dir when supplied.")
     p.add_argument("--models", nargs="+", default=list(MODEL_CEILINGS),
                    choices=list(MODEL_CEILINGS),
-                   help="Subset of models to fan across (default: all with proven ceilings).")
-    p.add_argument("--max-out", type=int, default=700,
-                   help="Max output tokens per model stream (default: 700).")
+                   help="Subset of models to fan across (default: all measured/configured models).")
+    p.add_argument("--task-type", default="structured_coding",
+                   help="Task type for empirical model routing (default: structured_coding).")
+    p.add_argument("--benchmark-name", default=None,
+                   help="Optional benchmark_name filter for model_eval_results routing.")
+    p.add_argument("--top-models", type=int, default=None,
+                   help="Use only the top N models after empirical routing.")
+    p.add_argument("--no-empirical-routing", action="store_true",
+                   help="Keep --models order instead of sorting by model_eval_results score.")
+    p.add_argument("--init-eval-schema", action="store_true",
+                   help="Create model_eval_results in the SQLite control plane and exit.")
+    p.add_argument("--max-out", type=int, default=4096,
+                   help="Max output tokens per model stream (default: 4096).")
     p.add_argument("--timeout", type=int, default=120,
                    help="Per-call timeout in seconds (default: 120).")
     p.add_argument("--snippet-chars", type=int, default=6000,
@@ -393,6 +561,11 @@ def build_arg_parser():
 def main(argv=None):
     args = build_arg_parser().parse_args(argv)
 
+    if args.init_eval_schema:
+        ensure_eval_schema_sqlite(args.db)
+        print(f"created/verified model_eval_results in {args.db}")
+        return 0
+
     api_key = os.environ.get("SCX_API_KEY")
     if not api_key:
         print("ERROR: SCX_API_KEY is not set. HR1: SCX key only — export SCX_API_KEY and retry.",
@@ -402,9 +575,17 @@ def main(argv=None):
     # ---- retrieve corpus ----
     try:
         if args.corpus:
+            args.store = "dir"
+        if args.store == "dir":
+            if not args.corpus:
+                raise ValueError("--store dir requires --corpus <directory>")
             rows = retrieve_from_corpus_dir(args.corpus, args.keywords)
             source_desc = f"dir:{args.corpus}"
+        elif args.store == "mssql":
+            rows = retrieve_from_mssql(args.mssql_server, args.mssql_database, args.keywords)
+            source_desc = f"mssql:{args.mssql_server}/{args.mssql_database}"
         else:
+            ensure_eval_schema_sqlite(args.db)
             rows = retrieve_from_sqlite(args.db, args.keywords)
             source_desc = f"sqlite:{args.db}"
     except Exception as e:
@@ -419,6 +600,12 @@ def main(argv=None):
 
     # ---- fan out across models IN PARALLEL, each sized to its own ceiling ----
     models = args.models
+    if not args.no_empirical_routing:
+        models = route_models_by_empirical_score(
+            args.db, models, args.task_type, args.benchmark_name, args.top_models,
+        )
+    elif args.top_models:
+        models = models[:args.top_models]
     t0 = time.time()
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(models)) as ex:
         futures = {

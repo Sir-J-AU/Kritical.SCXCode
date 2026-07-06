@@ -24,8 +24,8 @@ The Kritical SCX mux system answers questions about the SCX codebase by groundin
 | Layer | File | What it does |
 |---|---|---|
 | **Corpus store** | `store-mcp/kritical-local-store.mjs` | Ships inside the VS Code extension. Zero native deps. `node:sqlite` (Node ≥ 22 built-in). Holds the indexed SCX source corpus. |
-| **Single-model mux** | `mux/Invoke-KritScxSyntheticContext.py` | Fans N *lenses* (direct / edge-cases / security / architecture) across ONE model, then synthesises one grounded answer. |
-| **Multi-model mux** | `mux/Invoke-KritScxMuxMatrix.py` | Fans ONE task across DeepSeek-V3.1, MiniMax-M2.7, and gpt-oss-120b **in parallel**, sizes each to its **real proven ceiling**, isolates per-stream errors, then synthesises one cross-model answer. |
+| **Single-model mux** | `mux/Invoke-KritScxSyntheticContext.py` | Fans five *lenses* across ONE model, defaults to `MiniMax-M2.7`, then synthesises one grounded answer. |
+| **Multi-model mux** | `mux/Invoke-KritScxMuxMatrix.py` | Fans ONE task across at least five SCX models **in parallel**, sizes each to its **real proven ceiling**, routes by `model_eval_results` score where available, isolates per-stream errors, then synthesises one cross-model answer. |
 
 HR1: every call in this stack uses `SCX_API_KEY` only — no OpenAI key, no Anthropic key, no other provider key.
 
@@ -126,7 +126,7 @@ The extension host process (Node.js) can call `kritical-local-store.mjs` directl
 
 ### 3.1 Design
 
-The single-model mux fans **N parallel "lens" streams** across **one model** (default: `gpt-oss-120b`). Each lens is a short directive that biases the model toward a different perspective on the same retrieved corpus:
+The single-model mux fans **five parallel "lens" streams** across **one model** (default: `MiniMax-M2.7`, `max_tokens=4096`). Each lens is a short directive that biases the model toward a different perspective on the same retrieved corpus:
 
 | Lens | Focus |
 |---|---|
@@ -134,13 +134,14 @@ The single-model mux fans **N parallel "lens" streams** across **one model** (de
 | `edge-cases` | Failure modes and what the code does when things go wrong |
 | `security` | Keys, localhost, isolation properties |
 | `architecture` | How this fits the broader agentic-SCX architecture |
+| `sql-storage` | SQL/SQLite memory, retrieval, context packing, stale summaries, provenance |
 
 ### 3.2 Pipeline
 
 ```
 1. retrieve_context()  →  pulls (path, content) rows from KriticalSCXCodeStore (SQL Express)
                           via pyodbc / ODBC Driver 18, decompresses content_gz, packs
-                          into file-blocks up to max_chars (default 90,000).
+                          into file-blocks up to max_chars (default 160,000).
                           Also pulls TOP 12 symbols from LensSymbol.
 
 2. BASELINE            →  single-shot SCX call with NO context, NO mux.
@@ -166,7 +167,7 @@ The script prints a scorecard at the end:
 ```
 == SCORECARD ==
   synthetic context injected : 7,357 chars of REAL code from 7 DB files
-  parallel reasoning streams : 4 (fanned out concurrently, 3.5s wall)
+  parallel reasoning streams : 5 (fanned out concurrently, 3.5s wall)
   total tokens (streams+synth): NNN
   grounded 'flattenTool'/'web_search' cited: YES
   baseline mentioned the real code?         : NO (hallucinated / generic)
@@ -183,13 +184,14 @@ The key proof: the synthesis cites `flattenTool()`, `SERVER_TOOLS`, `web_search`
 The multi-model mux is the next evolution: it fans **ONE task across MULTIPLE models IN PARALLEL**, each sized to its **real proven ceiling** (not the advertised number), then synthesises every model's answer into one grounded cross-model answer.
 
 ```
-1. retrieve corpus   → from the local SQLite store (or --corpus dir), rows smallest-first
+1. retrieve corpus   → from local SQLite, SQL Server KriticalSCXCodeStore, or --corpus dir
 2. build_blocks()    → fenced file-blocks (### FILE: <path> ``` <lang> <content[:6000]> ```)
 3. fan out per model → ThreadPoolExecutor, one run_model_stream() per model, each:
      a. computes its char budget via context_char_budget(model, question, max_out)
      b. packs blocks via trim_to_budget(blocks, budget)  (whole blocks, smallest-first)
      c. calls SCX; NEVER raises — a 4xx/5xx/timeout is caught and returned as a FAIL record
-4. synthesize()      → DeepSeek-V3.1 fuses every successful model answer into one grounded answer
+4. synthesize()      → MiniMax-M2.7 fuses every successful model answer into one grounded answer
+5. empirical route   → if model_eval_results exists, score-ranked models run before unmeasured models
 ```
 
 ### 4.2 Per-model sizing (the point)
@@ -201,9 +203,44 @@ budget_tokens = real_ctx_tokens - question_tokens - max(reserve_out, max_out) - 
 budget_chars  = max(0, budget_tokens * 4)
 ```
 
-So MiniMax (195k) is fed more grounding than gpt-oss (108k) for the same task — each filled to *its own* ceiling, never the advertised number. `trim_to_budget()` packs whole file-blocks smallest-first until the per-model budget is hit, so the model with more headroom simply sees more code. Both are unit-tested offline (`mux/Invoke-KritScxMuxMatrix.test.py`, 7/7).
+So MiniMax (195k) is fed more grounding than gpt-oss (108k) for the same task — each filled to *its own* ceiling, never the advertised number. `trim_to_budget()` packs whole file-blocks smallest-first until the per-model budget is hit, so the model with more headroom simply sees more code. Routing, decoding, and packing are unit-tested offline in `mux/Invoke-KritScxMuxMatrix.test.py`.
 
-### 4.3 Error isolation + synthesis
+### 4.3 Empirical routing table
+
+Capability is measured, not marketing-defined. Initialise the table with:
+
+```bash
+python mux/Invoke-KritScxMuxMatrix.py --init-eval-schema
+```
+
+Schema:
+
+```sql
+CREATE TABLE model_eval_results (
+    eval_id             TEXT PRIMARY KEY,
+    model_id            TEXT NOT NULL,
+    benchmark_name      TEXT NOT NULL,
+    task_type           TEXT NOT NULL,
+    score               REAL NOT NULL,
+    latency_ms          INTEGER,
+    cost_estimate       REAL,
+    notes               TEXT,
+    created_at          TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+Score formula:
+
+```text
+score = quality_weight * quality
+      - latency_weight * latency
+      - cost_weight * cost
+      - failure_weight * failure_rate
+```
+
+Models without matching eval rows remain eligible after score-ranked models. This keeps routing empirical when evidence exists without breaking cold-start runs.
+
+### 4.4 Error isolation + synthesis
 
 One model failing (rate-limit, timeout, plan-gate) becomes a `FAIL` record and never aborts the run; the synthesis fuses whichever models succeeded. Parallel wall-time vs summed serial stream-time is reported to prove genuine fan-out.
 
@@ -218,6 +255,8 @@ Needle-recall tested against `api.scx.ai` (`docs/SCX-MUX-STORAGE-CONTEXT-PROOF.m
 | DeepSeek-V3.1 | 131,072 | **~129,300** | Matches — honours the full window |
 | MiniMax-M2.7 | 192,000 | **~195,676** (hard ~196,608) | **Exceeds** its advertised number |
 | gpt-oss-120b | 131,072 | **~107,842** | **Below** — deployment caps input ~108k |
+| Qwen3-32B | 32,000 | **configured 32,000** | Needs local benchmark rows |
+| gemma-4-31B-it | 128,000 | **configured 128,000** | Needs local benchmark rows |
 
 **Rule:** cap injected context per model at the real ceiling — the advertised number lies both ways.
 
@@ -229,13 +268,17 @@ Needle-recall tested against `api.scx.ai` (`docs/SCX-MUX-STORAGE-CONTEXT-PROOF.m
 # 0. Populate the local store first (one-time / on change)
 node store-mcp/kritical-local-store.mjs mine <repoRoot>
 
-# Single-model synthetic-context mux (SQL Express store)
-python mux/Invoke-KritScxSyntheticContext.py
+# Single-model synthetic-context mux (SQL Express store, MiniMax-M2.7, five lenses)
+python mux/Invoke-KritScxSyntheticContext.py --model MiniMax-M2.7 --max-out 4096
 
-# Multi-model mux-matrix — fan one task across all three, sized per ceiling
+# Initialise empirical routing table
+python mux/Invoke-KritScxMuxMatrix.py --init-eval-schema
+
+# Multi-model mux-matrix — fan one task across at least five, sized per ceiling
 python mux/Invoke-KritScxMuxMatrix.py -q "<question>" -k <keyword...> --report out/matrix.md
-python mux/Invoke-KritScxMuxMatrix.py -q "..." --models MiniMax-M2.7 DeepSeek-V3.1
-python mux/Invoke-KritScxMuxMatrix.py -q "..." --corpus <dir>   # read a dir instead of SQLite
+python mux/Invoke-KritScxMuxMatrix.py -q "..." --models MiniMax-M2.7 DeepSeek-V3.1 gpt-oss-120b Qwen3-32B gemma-4-31B-it
+python mux/Invoke-KritScxMuxMatrix.py -q "..." --store mssql --mssql-server ".\\SQLEXPRESS" --mssql-database KriticalSCXCodeStore
+python mux/Invoke-KritScxMuxMatrix.py -q "..." --store dir --corpus <dir>   # read a dir instead of SQLite
 ```
 
 `SCX_API_KEY` must be set (HKCU). HR1: SCX only.

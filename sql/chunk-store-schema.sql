@@ -28,6 +28,22 @@ CREATE TABLE IF NOT EXISTS chunks (
 CREATE INDEX IF NOT EXISTS ix_chunks_file ON chunks(file);
 CREATE INDEX IF NOT EXISTS ix_chunks_sym  ON chunks(symbols);
 
+-- Empirical model routing: capability is measured, not assumed from marketing metadata.
+-- The mux uses latest score rows to order candidate models for a task type.
+CREATE TABLE IF NOT EXISTS model_eval_results (
+    eval_id             TEXT PRIMARY KEY,
+    model_id            TEXT NOT NULL,
+    benchmark_name      TEXT NOT NULL,
+    task_type           TEXT NOT NULL,
+    score               REAL NOT NULL,
+    latency_ms          INTEGER,
+    cost_estimate       REAL,
+    notes               TEXT,
+    created_at          TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_model_eval_route
+ON model_eval_results(model_id, task_type, benchmark_name, created_at);
+
 -- .5231 6502 content-addressing: each UNIQUE chunk body is stored ONCE, keyed by its SHA-256. Chunk rows
 -- carry the sha reference and NULL content; reads materialise content via LEFT JOIN blobs ON blobs.sha=chunks.sha.
 -- Identical chunks (repeated boilerplate, or unchanged chunks across file versions) cost one blob, not N.
@@ -50,3 +66,13 @@ CREATE TABLE IF NOT EXISTS blobs (
 --     symbols NVARCHAR(400), content_gz VARBINARY(MAX), summary NVARCHAR(MAX),
 --     CONSTRAINT PK_Chunk PRIMARY KEY(file, idx));
 --   -- content stored gzip-compressed via COMPRESS(); DECOMPRESS() to read (byte-exact, per .5231 lens fix).
+--   IF OBJECT_ID('dbo.ModelEvalResults') IS NULL CREATE TABLE dbo.ModelEvalResults(
+--     eval_id NVARCHAR(80) PRIMARY KEY,
+--     model_id NVARCHAR(160) NOT NULL,
+--     benchmark_name NVARCHAR(160) NOT NULL,
+--     task_type NVARCHAR(120) NOT NULL,
+--     score FLOAT NOT NULL,
+--     latency_ms INT NULL,
+--     cost_estimate FLOAT NULL,
+--     notes NVARCHAR(MAX) NULL,
+--     created_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME());
