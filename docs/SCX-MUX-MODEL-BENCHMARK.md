@@ -62,3 +62,25 @@ SCX_API_KEY=... node mux/Invoke-KritScxModelBench.mjs   --models gemma-4-31B-it,
 Pass any N models to compare in one run; outputs + cost + latency are emitted side-by-side and the raw JSON is written for diffing. Pricing auto-loads from models.json so the cost column stays live.
 
 _Measured 2026-07-06. Regenerate any time by re-running the harness. Kritical Pty Ltd (c) 2026._
+
+## 7. gpt-oss-120b tuning (measured 2026-07-06)
+gpt-oss's reasoning burn is VARIABLE (~400-700 tokens) and non-deterministic. At `max_tokens=700` it
+sometimes exceeds the cap and returns `finish=length` with **empty `content`** (reasoning-only, unusable);
+other runs it squeaks in ~60 tokens of content. At **`max_tokens >= 2500`** it reliably leaves headroom and
+emits content every run (reasoning ~410-420 + answer). Cost can even DROP at the higher cap because it
+happens to reason less. **Rule: never run gpt-oss below ~2500 max_tokens** — the margin over its variable
+reasoning is what guarantees output, not a tight budget. Always read `content`, fall back to
+`reasoning_content` if empty.
+
+| max_tokens | completion | reasoning | content? | cost |
+|---|---|---|---|---|
+| 700 | 612 | 549 | borderline (0 in an earlier run) | $0.000640 |
+| 2500 | 470 | 411 | yes (reliable) | $0.000501 |
+| 4000 | 477 | 422 | yes (reliable) | $0.000508 |
+
+## 8. Parallel gemma wave — proven pattern (Opus-gated)
+gemma-4-31B-it fired at 4 pure helpers CONCURRENTLY -> 13 [Test] procs for **$0.0022 total**. Opus lensed each
+assertion vs the real body: gemma nailed deterministic string logic but got **3/13 BC-Format assertions wrong**
+(misread `Precision,2:5` = max-5-decimals and `Precision,0:0` = integer). Corrected + compile-gated (683-file
+exit 0). Pattern: cheap model floods drafts in parallel; Opus verifies every line + fixes fines; only
+compile-gated output lands. Cost of the whole verified wave: ~1/5 of a cent.
