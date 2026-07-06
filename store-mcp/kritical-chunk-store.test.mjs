@@ -79,3 +79,27 @@ test('content-addressed dedup: identical chunk bodies stored once + round-trip b
     assert.equal(readFileSync(out, 'utf8'), readFileSync(fx, 'utf8'), 'reassembly byte-identical after dedup');
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('compression tier: compressible blobs stored gz, incompressible stay raw, reassembly byte-safe', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'gz-'));
+  const db = join(dir, 's.db');
+  const fx = join(dir, 'big.js');
+  // one very compressible function (400 identical lines) + a small function that should stay raw
+  const huge = 'function huge() {\n' + Array.from({ length: 400 }, () => '  doThing(); // repeated identical line, highly compressible').join('\n') + '\n}';
+  writeFileSync(fx, huge + '\n\nfunction small() { return 1; }\n');
+  try {
+    const r = spawnSync(process.execPath, [CLI, 'chunk', fx], { env: { ...process.env, KRIT_CHUNK_STORE: db }, encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+    const d = new DatabaseSync(db);
+    const gz = d.prepare("SELECT COUNT(*) n FROM blobs WHERE codec='gz'").get().n;
+    const raw = d.prepare("SELECT COUNT(*) n FROM blobs WHERE codec='raw'").get().n;
+    const stored = d.prepare('SELECT SUM(LENGTH(content)) n FROM blobs').get().n;
+    d.close();
+    assert.ok(gz >= 1, `the compressible chunk should be gzip-tiered (gz=${gz})`);
+    assert.ok(raw >= 1, `the tiny chunk should stay raw (raw=${raw})`);
+    assert.ok(stored < readFileSync(fx, 'utf8').length, `compressed store (${stored}) must be smaller than raw file (${readFileSync(fx, 'utf8').length})`);
+    const out = join(dir, 'out.js');
+    spawnSync(process.execPath, [CLI, 'reassemble', fx, out], { env: { ...process.env, KRIT_CHUNK_STORE: db } });
+    assert.equal(readFileSync(out, 'utf8'), readFileSync(fx, 'utf8'), 'reassembly byte-identical after gz decompression');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});

@@ -17,6 +17,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { gzipSync, gunzipSync } from 'node:zlib';
 import { homedir } from 'node:os';
 import { join, dirname, extname } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -34,11 +35,27 @@ function ensure(d) {
           CREATE TABLE IF NOT EXISTS chunks(file TEXT, idx INT, start_line INT, end_line INT, sha TEXT, symbols TEXT, content TEXT, summary TEXT, PRIMARY KEY(file, idx));
           CREATE INDEX IF NOT EXISTS ix_chunks_file ON chunks(file);
           -- .5231 6502 content-addressing: each unique chunk body stored ONCE by SHA; chunks reference it.
-          CREATE TABLE IF NOT EXISTS blobs(sha TEXT PRIMARY KEY, content TEXT);`);
+          -- codec = storage tier for that blob: 'raw' text, or 'gz' (gzip -> base64) when that is actually smaller.
+          CREATE TABLE IF NOT EXISTS blobs(sha TEXT PRIMARY KEY, codec TEXT, content TEXT);`);
+  // migrate a pre-tier blobs table (sha,content) in place — add the codec column; existing rows read as raw.
+  if (!d.prepare('PRAGMA table_info(blobs)').all().some((c) => c.name === 'codec')) d.exec('ALTER TABLE blobs ADD COLUMN codec TEXT');
 }
-// read a file's chunks, materialising content from the SHA-keyed blob (fallback to any inline content).
+
+// .5231 6502 compression tier: pick the SMALLEST representation per blob. gzip then base64 inflates ~33%,
+// so gz only wins on genuinely compressible bodies (repeated code, boilerplate) — tiny/incompressible chunks
+// stay raw automatically. Fully reversible: decodeBlob is the exact inverse. Byte-safety is preserved.
+function encodeBlob(content) {
+  const raw = Buffer.byteLength(content, 'utf8');
+  const b64 = gzipSync(Buffer.from(content, 'utf8')).toString('base64');
+  return b64.length < raw ? { codec: 'gz', stored: b64 } : { codec: 'raw', stored: content };
+}
+const decodeBlob = (codec, stored) => (codec === 'gz' ? gunzipSync(Buffer.from(stored, 'base64')).toString('utf8') : stored);
+
+// read a file's chunks, materialising content from the SHA-keyed blob (fallback to any inline content) + decoding the tier.
 function chunkRows(d, file) {
-  return d.prepare('SELECT c.idx idx, c.start_line start_line, c.end_line end_line, c.symbols symbols, COALESCE(b.content, c.content) content, c.summary summary FROM chunks c LEFT JOIN blobs b ON b.sha=c.sha WHERE c.file=? ORDER BY c.idx').all(file);
+  const rs = d.prepare('SELECT c.idx idx, c.start_line start_line, c.end_line end_line, c.symbols symbols, b.codec codec, COALESCE(b.content, c.content) content, c.summary summary FROM chunks c LEFT JOIN blobs b ON b.sha=c.sha WHERE c.file=? ORDER BY c.idx').all(file);
+  for (const r of rs) { r.content = decodeBlob(r.codec, r.content); delete r.codec; }
+  return rs;
 }
 const sha = (s) => createHash('sha256').update(s, 'utf8').digest('hex');
 
@@ -66,9 +83,9 @@ function chunkFile(file) {
   d.exec('BEGIN');
   d.prepare('DELETE FROM chunks WHERE file=?').run(file);
   // content-addressed: store each unique body once in blobs; chunk rows reference it by SHA (content=NULL).
-  const blobIns = d.prepare('INSERT OR IGNORE INTO blobs(sha,content) VALUES(?,?)');
+  const blobIns = d.prepare('INSERT OR IGNORE INTO blobs(sha,codec,content) VALUES(?,?,?)');
   const ins = d.prepare('INSERT INTO chunks(file,idx,start_line,end_line,sha,symbols,content,summary) VALUES(?,?,?,?,?,?,NULL,NULL)');
-  chunks.forEach((c, i) => { const h = sha(c.content); blobIns.run(h, c.content); ins.run(file, i, c.start, c.end, h, c.symbols); });
+  chunks.forEach((c, i) => { const h = sha(c.content); const e = encodeBlob(c.content); blobIns.run(h, e.codec, e.stored); ins.run(file, i, c.start, c.end, h, c.symbols); });
   d.prepare('INSERT OR REPLACE INTO files(file,lang,loc,sha,n_chunks,synopsis,mined_utc) VALUES(?,?,?,?,?,?,?)')
     .run(file, extname(file).slice(1), src.split('\n').length, sha(src), chunks.length, null, new Date().toISOString());
   d.exec('COMMIT');
@@ -148,7 +165,8 @@ function applyChunk(file, idx, newFile) {
   const startEnd = d.prepare('SELECT start_line,end_line FROM chunks WHERE file=? AND idx=?').get(file, +idx);
   const newLoc = newContent.split('\n').length;
   const h = sha(newContent);
-  d.prepare('INSERT OR IGNORE INTO blobs(sha,content) VALUES(?,?)').run(h, newContent);   // content-addressed
+  const e = encodeBlob(newContent);
+  d.prepare('INSERT OR IGNORE INTO blobs(sha,codec,content) VALUES(?,?,?)').run(h, e.codec, e.stored);   // content-addressed + tiered
   d.prepare('UPDATE chunks SET content=NULL, sha=?, end_line=? WHERE file=? AND idx=?')
     .run(h, startEnd.start_line + newLoc - 1, file, +idx);
   // renumber downstream line ranges + reassemble the file to disk (content materialised via blob join)

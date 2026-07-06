@@ -31,9 +31,14 @@ CREATE INDEX IF NOT EXISTS ix_chunks_sym  ON chunks(symbols);
 -- .5231 6502 content-addressing: each UNIQUE chunk body is stored ONCE, keyed by its SHA-256. Chunk rows
 -- carry the sha reference and NULL content; reads materialise content via LEFT JOIN blobs ON blobs.sha=chunks.sha.
 -- Identical chunks (repeated boilerplate, or unchanged chunks across file versions) cost one blob, not N.
+-- codec = per-blob storage tier: 'raw' text, or 'gz' (gzip -> base64) when that is genuinely smaller.
+-- Small/incompressible bodies stay raw automatically (base64 inflates ~33%, so gz only wins on compressible
+-- code). Reads decode by codec — byte-exact. SQL Server mirror uses VARBINARY + COMPRESS()/DECOMPRESS() and
+-- needs no base64 (COMPRESS already yields gzip bytes), so its codec is implicit.
 CREATE TABLE IF NOT EXISTS blobs (
   sha      TEXT PRIMARY KEY,   -- SHA-256 of the content
-  content  TEXT                -- the unique chunk body (SQL Server: VARBINARY via COMPRESS() for gzip tiering)
+  codec    TEXT,               -- 'raw' | 'gz'
+  content  TEXT                -- raw text, or base64(gzip(content)) when codec='gz'
 );
 
 -- SQL Server (dbo.*) equivalent — the server-side warehouse (KriticalSCXCodeStore):
