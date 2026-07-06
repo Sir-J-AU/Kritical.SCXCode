@@ -6,7 +6,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { extractKeywords, fitBudget, augmentWithCorpus } from './scx-corpus-augment.mjs';
+import { extractKeywords, fitBudget, augmentWithCorpus, buildBigFileContext } from './scx-corpus-augment.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const STORE = join(HERE, '..', 'store-mcp', 'kritical-local-store.mjs');
@@ -70,4 +70,19 @@ test('augmentWithCorpus injects a strippable developer item grounded in the mine
     rmSync(dbDir, { recursive: true, force: true });
     rmSync(fx, { recursive: true, force: true });
   }
+});
+
+test('buildBigFileContext returns SYNTHETIC CONTEXT for a file too big to inline, focused + budgeted', () => {
+  // reference a genuinely huge real file by repo-relative path (resolveFile checks cwd)
+  const rel = 'src/extension.ts'; // ~160KB / 2500+ lines
+  const synth = buildBigFileContext(`${rel} switchKey`, 12000);
+  assert.match(synth, /SYNTHETIC CONTEXT/);
+  assert.match(synth, /chunks; too big to inline/);
+  assert.match(synth, /FOCUS CHUNK/);
+  assert.match(synth, /WHOLE-FILE MAP:/);
+  assert.ok(synth.length <= 12000, `must fit the budget (got ${synth.length})`);
+});
+
+test('buildBigFileContext returns empty when no big file is referenced (falls back to search)', () => {
+  assert.equal(buildBigFileContext('switchKey getConfig', 12000), '');
 });

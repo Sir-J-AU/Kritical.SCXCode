@@ -19,6 +19,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join, dirname, extname } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const DB_PATH = process.env.KRIT_CHUNK_STORE || join(homedir(), '.kritical-scx', 'chunk-store.db');
 mkdirSync(dirname(DB_PATH), { recursive: true });
@@ -88,22 +89,29 @@ function printMap(file) {
 
 // The synthetic edit window: the FOCUS chunk(s) in full + a MAP of every other chunk, within a char budget.
 export function buildContext(fileRows, focus, budget = 12000) {
-  const isNum = /^\d+$/.test(String(focus));
+  const raw = String(focus || '').trim();
+  const isNum = /^\d+$/.test(raw);
+  const terms = raw.toLowerCase().split(/\s+/).filter((t) => t.length > 2); // multi-term: match ANY identifier
   const focusIdx = new Set();
   for (const r of fileRows) {
-    if (isNum) { const n = +focus; if (n >= r.start_line && n <= r.end_line) focusIdx.add(r.idx); }
-    else if ((r.symbols && r.symbols.toLowerCase().includes(String(focus).toLowerCase())) || r.content.toLowerCase().includes(String(focus).toLowerCase())) focusIdx.add(r.idx);
+    if (isNum) { const n = +raw; if (n >= r.start_line && n <= r.end_line) focusIdx.add(r.idx); continue; }
+    const hay = ((r.symbols || '') + ' ' + r.content).toLowerCase();
+    if (terms.some((t) => hay.includes(t))) focusIdx.add(r.idx);
   }
   if (!focusIdx.size && fileRows.length) focusIdx.add(fileRows[0].idx); // fall back to first chunk
   const header = `# SYNTHETIC EDIT CONTEXT (${fileRows.length} chunks; focus=[${[...focusIdx].join(',')}]). Chunks not shown in full live in external storage — request them by #idx.\n`;
-  const mapBlock = 'WHOLE-FILE MAP:\n' + fileRows.map(mapLine).join('\n') + '\n\n';
-  let out = header + mapBlock;
+  let out = header;
+  // 1) the FOCUS chunk(s) in FULL first — the editable region is guaranteed (always at least the first one).
   for (const r of fileRows) {
     if (!focusIdx.has(r.idx)) continue;
-    const block = `--- FOCUS CHUNK #${r.idx} (lines ${r.start_line}-${r.end_line}) — EDIT THIS ---\n${r.content}\n--- END CHUNK #${r.idx} ---\n\n`;
-    if (out.length + block.length > budget) break;
-    out += block;
+    const block = `--- FOCUS CHUNK #${r.idx} (lines ${r.start_line}-${r.end_line}) — EDIT THIS ---\n${r.content}\n--- END CHUNK #${r.idx} ---\n`;
+    if (out.length + block.length > budget && out.length > header.length) break; // keep at least one focus chunk
+    out += block + '\n';
   }
+  // 2) the WHOLE-FILE MAP fills the remaining budget (truncated if the file is enormous).
+  let map = 'WHOLE-FILE MAP:\n';
+  for (const r of fileRows) { const ml = mapLine(r) + '\n'; if (out.length + map.length + ml.length > budget) break; map += ml; }
+  out += map;
   return { text: out, focus: [...focusIdx] };
 }
 
@@ -150,11 +158,14 @@ function summarize(file, spec) {
   console.log(`[summarize] ${file} #${idx} summary set`);
 }
 
-const [cmd, file, a3, a4] = process.argv.slice(2);
-if (cmd === 'chunk') chunkFile(file);
-else if (cmd === 'map') printMap(file);
-else if (cmd === 'context') printContext(file, a3 || '1', a4 ? +a4 : 12000);
-else if (cmd === 'apply') applyChunk(file, a3, a4);
-else if (cmd === 'reassemble') reassemble(file, a3);
-else if (cmd === 'summarize') summarize(file, a3);
-else console.log('usage: chunk <file> | map <file> | context <file> <focus> [budget] | apply <file> <idx> <newFile> | reassemble <file> [out] | summarize <file> "<idx>:<text>"');
+// Only run the CLI when executed directly — so importing chunkText/buildContext is side-effect-free.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const [cmd, file, a3, a4] = process.argv.slice(2);
+  if (cmd === 'chunk') chunkFile(file);
+  else if (cmd === 'map') printMap(file);
+  else if (cmd === 'context') printContext(file, a3 || '1', a4 ? +a4 : 12000);
+  else if (cmd === 'apply') applyChunk(file, a3, a4);
+  else if (cmd === 'reassemble') reassemble(file, a3);
+  else if (cmd === 'summarize') summarize(file, a3);
+  else console.log('usage: chunk <file> | map <file> | context <file> <focus> [budget] | apply <file> <idx> <newFile> | reassemble <file> [out] | summarize <file> "<idx>:<text>"');
+}

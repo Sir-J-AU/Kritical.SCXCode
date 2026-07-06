@@ -9,8 +9,10 @@
 //
 // Author: Joshua Finley — Kritical Pty Ltd — (c) 2026.
 import { spawn } from 'node:child_process';
+import { statSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { chunkText, buildContext } from '../store-mcp/kritical-chunk-store.mjs';
 
 const STORE_MODE = process.env.KRIT_SHIM_STORE || 'off';
 const STORE_SCRIPT = process.env.KRIT_LOCAL_STORE_SCRIPT
@@ -25,6 +27,7 @@ const MODEL_CEIL = {
 const DEFAULT_CEIL = 108_000 * 4; // conservative fallback = the TIGHTEST ceiling, never over-inject
 const OUTPUT_RESERVE = 2_000 * 4; // leave room for the model's reply (chars)
 const SAFETY_MARGIN = 4_000;      // JSON/encoding overhead fudge (chars)
+const SYNTH_THRESHOLD = 24_000;   // files bigger than ~6k tokens get the synthetic chunk-map treatment
 
 /** Deterministic, zero-latency keyword extractor (no LLM). Prefers file paths from tool calls,
  *  then salient identifiers/paths from the last user/input message. */
@@ -94,6 +97,42 @@ function searchStore(keywords, maxChars) {
   });
 }
 
+/** Resolve a keyword token to a real file (cwd-relative or as-is). Returns { path, size } or null. */
+function resolveFile(tok) {
+  for (const c of [tok, join(process.cwd(), tok)]) {
+    try { const st = statSync(c); if (st.isFile()) return { path: c, size: st.size }; } catch { /* not a file */ }
+  }
+  return null;
+}
+
+/** For any referenced file too big to inline, build its SYNTHETIC CONTEXT (focus chunk(s) FULL + a
+ *  compressed whole-file map) via the chunk-store — this is the "edit massive files without choking"
+ *  path. `idents` are the non-file identifiers used as the focus. Returns '' if no big files referenced. */
+export function buildBigFileContext(keywords, budget) {
+  const tokens = String(keywords || '').split(/\s+/).filter(Boolean);
+  const bigFiles = []; const idents = [];
+  for (const tok of tokens) {
+    const f = resolveFile(tok);
+    if (f && f.size > SYNTH_THRESHOLD) bigFiles.push(f.path);
+    else if (!f) idents.push(tok);
+  }
+  if (!bigFiles.length) return '';
+  const focus = idents.join(' ');
+  const parts = []; let used = 0;
+  for (const path of bigFiles) {
+    if (used >= budget) break;
+    let src; try { src = readFileSync(path, 'utf8'); } catch { continue; }
+    const rows = chunkText(src).map((c, i) => ({ idx: i, start_line: c.start, end_line: c.end, symbols: c.symbols, content: c.content, summary: null }));
+    const prefix = `### SYNTHETIC CONTEXT — ${path.replace(/\\/g, '/')} (${rows.length} chunks; too big to inline — edit the FOCUS chunk, the rest lives in storage):\n`;
+    const room = budget - used - prefix.length - 2;   // reserve for the prefix so buildContext never gets sliced
+    if (room < 1500) break;                            // not enough room left for a meaningful window
+    const { text } = buildContext(rows, focus, room);
+    const block = prefix + text + '\n';
+    parts.push(block); used += block.length;
+  }
+  return parts.join('\n');
+}
+
 /** Auto-ground a request with retrieved corpus. HR29: OFF (default) -> unchanged. HR1: SCX key only. */
 export async function augmentWithCorpus(parsed, { model = '', storeMode = STORE_MODE } = {}) {
   if (!parsed || storeMode === 'off') return parsed;            // HR29 passthrough default
@@ -105,7 +144,9 @@ export async function augmentWithCorpus(parsed, { model = '', storeMode = STORE_
   const budget = fitBudget(modelCeil, JSON.stringify(parsed).length);
   if (budget <= 0) return parsed;                               // no headroom -> inject nothing (never hard-400)
 
-  const corpus = await searchStore(keywords, budget);
+  // If the request references a file too big to inline, inject its SYNTHETIC CONTEXT (chunk map + focus
+  // chunk in full) — never chokes on a massive file. Otherwise fall back to raw corpus search.
+  const corpus = buildBigFileContext(keywords, budget) || await searchStore(keywords, budget);
   if (!corpus) return parsed;
 
   const item = { role: 'developer', content: '### KRITICAL-CORPUS-CONTEXT (auto-grounded, strippable)\n' + corpus };
