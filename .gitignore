@@ -15,3 +15,6 @@ src/node_modules/
 
 # Generated Lens ingest receipts -- regenerable state output, not source
 scripts/state/
+
+# Kritical repo lane-lease (see Kritical.PS.GitHub Enter-KritRepoLease) -- never commit
+.kritical-lane-lock.json
