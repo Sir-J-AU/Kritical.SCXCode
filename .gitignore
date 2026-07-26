@@ -15,3 +15,9 @@ src/node_modules/
 
 # Generated Lens ingest receipts -- regenerable state output, not source
 scripts/state/
+
+# --- Generated Lens/tool artefacts (added 20260726, estate-gitignore lane) ---
+# Regenerable machine output. Re-emit with the Lens sweep commands in AGENTS.md.
+# Hand-authored docs/ findings and scripts/*.ps1 are deliberately NOT ignored.
+# Lens sweep run output: timestamped, regenerable
+scripts/output/
