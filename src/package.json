@@ -111,6 +111,12 @@
         "category": "Kritical SCXCode"
       },
       {
+        "command": "kritical.scxcode.lookingGlass",
+        "title": "Kritical SCX: Open Lens Looking Glass",
+        "category": "Kritical SCXCode",
+        "icon": "$(telescope)"
+      },
+      {
         "command": "kritical.scxcode.scxCodex",
         "title": "Kritical: Open SCX Codex (terminal — SCX-branded, never touches real codex)",
         "category": "Kritical SCXCode"
@@ -150,9 +156,14 @@
           "group": "navigation@4"
         },
         {
-          "command": "kritical.scxcode.setupGui",
+          "command": "kritical.scxcode.lookingGlass",
           "when": "view == kritical.scxcode.chat",
           "group": "navigation@5"
+        },
+        {
+          "command": "kritical.scxcode.setupGui",
+          "when": "view == kritical.scxcode.chat",
+          "group": "navigation@6"
         }
       ],
       "editor/title": [
@@ -189,6 +200,10 @@
         },
         {
           "command": "kritical.scxcode.showStatus",
+          "when": "true"
+        },
+        {
+          "command": "kritical.scxcode.lookingGlass",
           "when": "true"
         },
         {
@@ -238,6 +253,13 @@
           "type": "string",
           "default": "https://api.scx.ai",
           "description": "SCX API base URL. Change only if you point at a self-hosted SCX mirror.",
+          "scope": "application"
+        },
+        "kritical.scxcode.routerEnabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Route chat requests through the local LiteLLM router (http://127.0.0.1:4180) instead of directly to SCX. OFF (default, HR29 baseline) = direct to the configured baseUrl and always works. ON = via the local router; if the router is unreachable, SCXCode falls back to direct automatically. Does not overwrite baseUrl — the effective base is computed at request time.",
+          "markdownDescription": "Route chat requests through the **local LiteLLM router** (`http://127.0.0.1:4180`) instead of directly to SCX.\n\n- **OFF** (default) — direct to your configured `baseUrl`. This is the **HR29 additive baseline**: with the router off, requests always work.\n- **ON** — via the local router. If the router is not reachable, SCXCode **falls back to direct** automatically and shows a subtle status hint (never a hard fail).\n\nThis does **not** overwrite your `baseUrl` setting; the effective base is computed per request.",
           "scope": "application"
         },
         "kritical.scxcode.codexWrapperPath": {

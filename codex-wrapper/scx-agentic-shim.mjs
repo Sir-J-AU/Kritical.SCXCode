@@ -92,7 +92,12 @@ const server = http.createServer((req, res) => {
       res.end(JSON.stringify({ ok: true, service: 'scx-agentic-shim', upstream: UPSTREAM }));
       return;
     }
-    const target = UPSTREAM + url.pathname.replace(/^\/v1/, '') + url.search;
+    // .5231 (bughunt) — build the upstream target robustly. UPSTREAM already carries its own path
+    // suffix (usually `/v1`) and has no trailing slash. Strip a leading `/v1` from the client path
+    // ONLY when present (codex may or may not include it), then join with exactly one slash so we
+    // never emit `//` or drop the separator. Paths that don't start with `/v1` pass through intact.
+    const clientPath = url.pathname.replace(/^\/v1(?=\/|$)/, '');
+    const target = UPSTREAM + (clientPath.startsWith('/') ? clientPath : '/' + clientPath) + url.search;
 
     const isResponses = req.method === 'POST' && url.pathname.endsWith('/responses');
     let parsed = null;
@@ -100,7 +105,9 @@ const server = http.createServer((req, res) => {
 
     const call = (bodyStr) => fetch(target, {
       method: req.method,
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${KEY}`, accept: req.headers['accept'] || 'application/json' },
+      // .5231 (bughunt) — forward the client's original content-type instead of hard-coding JSON,
+      // so non-JSON bodies (e.g. multipart uploads) aren't mislabelled; default to JSON when absent.
+      headers: { 'content-type': req.headers['content-type'] || 'application/json', authorization: `Bearer ${KEY}`, accept: req.headers['accept'] || 'application/json' },
       body: req.method === 'GET' || req.method === 'HEAD' ? undefined : bodyStr,
     });
 
