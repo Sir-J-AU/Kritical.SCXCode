@@ -2,7 +2,22 @@ node_modules/
 receipts/
 *.log
 *.tmp
+*.pyc
+__pycache__/
 .DS_Store
 .vscode/settings.json
 src/out/
 src/node_modules/
+
+# Generated run-output/proof artifacts (coding-queue state, e2e proofs,
+# environment audits) -- regenerable, not source
+/out/
+
+# Generated Lens ingest receipts -- regenerable state output, not source
+scripts/state/
+
+# --- Generated Lens/tool artefacts (added 20260726, estate-gitignore lane) ---
+# Regenerable machine output. Re-emit with the Lens sweep commands in AGENTS.md.
+# Hand-authored docs/ findings and scripts/*.ps1 are deliberately NOT ignored.
+# Lens sweep run output: timestamped, regenerable
+scripts/output/
