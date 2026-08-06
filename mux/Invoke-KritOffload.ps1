@@ -51,32 +51,62 @@
       beyond what already existed (Tier 1 first-if-reachable, unchanged) — it does not start it,
       and it does not silently assume any safety posture on the operator's behalf.
 
-      🔴 OPERATOR-ONLY — EXACT STEPS TO MAKE `-Route lmstudio-w365` REAL (added 2026-08-02, per
-      operator: "AND OR TO LM STUDIO @W365BOX"). This script does not, and per standing rule must
-      not, perform any of these — no automatic service startup without typed-ack + rehearsal, and
-      no credentialed remote session was opened to check current state (a sibling lane correctly
-      declined that). Last MEASURED state (2026-08-01): W365 ports 22/5986/1234 all closed, LM
-      Studio "Status: Stopped" — treat as UNVERIFIED/likely still off until re-checked.
-        1. On the W365 Cloud PC itself (RDP/console session, operator-driven): start LM Studio's
-           local server — `lms.exe server start` (same binary/command as the laptop) — ONLY after
-           setting whatever thermal/context/memory safety options the operator decides on for that
-           box (same open item as the laptop leg above; no specific values are assumed here).
-        2. Bind LM Studio's OpenAI-compatible server to localhost on the W365 box (default
-           127.0.0.1:1234) — never 0.0.0.0. Do NOT forward port 1234 itself across any tunnel (that
-           would push raw GPU inference traffic over the wire).
-        3. Run a LiteLLM instance ON THE SAME W365 BOX, pointed at that localhost LM Studio server,
-           so only LiteLLM's port needs to leave the box.
-        4. Forward/tunnel ONLY LiteLLM's port back to wherever this script runs from, and prefer
-           binding that tunnel to the TAILNET address only (not a public interface) — consistent
-           with "nothing leaves the estate" being the entire point of Tier 1.
-        5. Pass that forwarded LiteLLM address as `-LmStudioW365Base 'http://<tailnet-addr>:<port>/v1'`
-           (or set it as the script's default once it is confirmed stable — not done here, since an
-           unverified address must never become a silent default).
-        6. Confirm with `Invoke-KritOffload -StatusOnly` — the `lmstudio-w365 (Cloud PC)` row must
+      🔴 CORRECTED 2026-08-02 (coordinator correction, after an earlier framing of this section
+      was wrong and was relayed as fact): the operator has CONFIRMED LM Studio IS on the W365
+      host. The prior claim that `Test-NetConnection 100.94.243.73 -Port 1234` coming back closed
+      meant LM Studio was "Stopped"/not running CONFLATED "not reachable from an external probe"
+      with "not running". A loopback-bound LM Studio (127.0.0.1:1234 on the W365 box itself,
+      never 0.0.0.0) is INVISIBLE to an external port probe by design — that is the CORRECT and
+      EXPECTED result for a correctly-configured box, not evidence of absence. Do not repeat the
+      "ports closed -> Stopped" inference again.
+
+      🔴 THE ROUTE THEREFORE NEVER DIALS THE TAILNET ADDRESS DIRECTLY. `-LmStudioW365Base` must be
+      a LOCAL LOOPBACK address ON THIS MACHINE (`127.0.0.1:<forwarded-port>/v1`), never
+      `<tailnet-addr>:1234` — dialing the tailnet IP would require W365 to expose port 1234 on a
+      routable interface, which the architecture forbids outright (see point 2 below). The real
+      traffic path is: this script -> `127.0.0.1:<forwarded-port>` on THIS box -> an established
+      OUTBOUND reverse SSH tunnel -> W365's own loopback -> LM Studio. No inbound port is opened on
+      either side.
+
+      🔴 THE REVERSE TUNNEL DESIGN LANDED 2026-08-02 (commit `1b473b1`), NOT YET UP. Read
+      `C:\Users\joshl\OneDrive - Kritical Pty Ltd\Github\Kritical.SecureRemoteNetworking\docs\REVERSE-TUNNEL-BIDIRECTIONAL-TAILNET-DESIGN-20260802.md`
+      and `C:\Users\joshl\OneDrive - Kritical Pty Ltd\Github\Kritical.SecureRemoteNetworking\config\srn.config.psd1`
+      for the authoritative, regenerable source of the forwarded-port pair. Two candidate pairs
+      are proposed there (58221/58222 and 58231/58232) but neither is reserved yet, and
+      `-Mode Install` has not completed (needs elevation the automation could not obtain) — so as
+      of this correction the tunnel is NOT established. Take the local forwarded port FROM that
+      config, not from a value hardcoded in this file.
+
+      OPERATOR-ONLY — exact steps to make `-Route lmstudio-w365` real. This script does not, and
+      per standing rule must not, perform any of these — no automatic service startup without
+      typed-ack + rehearsal, and no credentialed remote session may be opened to W365 or used to
+      exec there:
+        1. On the W365 Cloud PC itself (RDP/console session, operator-driven, if not already
+           running): start LM Studio's local server — `lms.exe server start` — ONLY after setting
+           whatever thermal/context/memory safety options the operator decides on for that box
+           (same open item as the laptop leg above; no specific values are assumed here). LM
+           Studio's OpenAI-compatible server binds to `127.0.0.1:1234` on that box — never
+           `0.0.0.0` — and port 1234 itself is NEVER forwarded across any tunnel (that would push
+           raw GPU inference traffic over the wire and require an inbound-exposed port).
+        2. Bring up the REVERSE tunnel per the SRN design doc above (`-Mode Install`, needs
+           elevation) so a LOCAL port on THIS box (one of the reserved pairs, e.g. `58222`) forwards
+           to LM Studio's loopback `1234` on the W365 box. Outbound-only, no inbound port on either
+           side — that is the entire point of "reverse".
+        3. Pass the resulting LOCAL loopback address as
+           `-LmStudioW365Base 'http://127.0.0.1:<forwarded-port>/v1'` (read the actual reserved
+           port from `srn.config.psd1` rather than assuming one of the two proposed pairs — they
+           are PROPOSED, not yet reserved as of this correction).
+        4. Confirm with `Invoke-KritOffload -StatusOnly` — the `lmstudio-w365 (Cloud PC)` row must
            read `RUNNING-AND-ANSWERING` before relying on `-Route auto` or `-Route lmstudio-w365`
-           for anything. Until then it correctly reports `NOT-CONFIGURED` (no base given) or
-           `UNREACHABLE-OR-STOPPED` (base given, port closed) — both are HONEST, not failures of
-           this script.
+           for anything. Until then it correctly reports one of two DISTINCT, HONEST states (see
+           `Get-KritOffloadLmStudioStatus`'s `-RemoteNoLocalBinaryCheck` branch below) —
+           `NOT-CONFIGURED` (no base given at all) or `TUNNEL-NOT-ESTABLISHED` (a LOCAL loopback
+           base was given but nothing answers there yet, meaning the reverse tunnel itself is the
+           missing prerequisite — NOT that LM Studio is down or firewalled correctly). These two
+           states are deliberately distinct from each other and from `RUNNING-AND-ANSWERING`: fail
+           fast and visibly when the tunnel is down, and if `-Route auto` ever falls through to a
+           different (hosted) provider, the resolved provider is always named in the result — never
+           a silent substitution.
 
     TIER 2 (overflow, NON-sensitive payloads ONLY, ONLY after the egress scan passes) —
       the canonical `kritical-litellm-router` Docker container on the LAPTOP,
@@ -253,19 +283,30 @@
   closed).
 
 .PARAMETER LmStudioW365Base
-  🔴 ADDED 2026-08-02 (operator: "AND OR TO LM STUDIO @W365BOX" — mechanical bulk should also be
-  routable to LM Studio on the W365 Cloud PC, not just this laptop). Tier 1 endpoint for the
-  SEPARATE machine — `-Route lmstudio-w365`. Default is EMPTY STRING, deliberately: no tailnet/
-  tunnel address for the W365 box's LiteLLM-fronted LM Studio has been verified reachable as of
-  this session (last measured 2026-08-01: ports 22/5986/1234 all closed, LM Studio "Status:
-  Stopped"), and a sibling lane declined to re-check it live because doing so would require
-  entering a stored credential to open a remote session — prohibited regardless of authorisation.
-  **This param is therefore UNKNOWN-by-default, not guessed.** Supply the real forwarded-LiteLLM
-  address once the operator brings it up (see the OPERATOR-ONLY section in this script's own
-  README/docs entry for exactly what he needs to do). An empty value means `-Route lmstudio-w365`
-  and the W365 row in `-StatusOnly` both report NOT-CONFIGURED without attempting any network call
-  — fail fast, never hang on a guessed address. Same rule as LmStudioBase: tunnel LiteLLM's port,
-  never LM Studio's 1234 directly, so GPU inference traffic never crosses the tunnel itself.
+  🔴 ADDED 2026-08-02 (operator: "AND OR TO LM STUDIO @W365BOX"), CORRECTED 2026-08-02 (coordinator
+  correction — see the DESCRIPTION block above for the full account of what was wrong). The
+  operator has CONFIRMED LM Studio IS on the W365 host; a closed port on an external probe was
+  the CORRECT and EXPECTED result of its loopback-only binding, not evidence it was stopped.
+
+  🔴 THIS MUST BE A LOCAL LOOPBACK ADDRESS ON THIS MACHINE
+  (`http://127.0.0.1:<forwarded-port>/v1`) — NEVER the W365 tailnet IP directly. Dialing the
+  tailnet IP would require W365 to expose port 1234 on a routable interface, which this
+  architecture forbids. The real path is this box's loopback -> an OUTBOUND reverse SSH tunnel
+  (design + config: `Kritical.SecureRemoteNetworking\docs\REVERSE-TUNNEL-BIDIRECTIONAL-TAILNET-DESIGN-20260802.md`,
+  `Kritical.SecureRemoteNetworking\config\srn.config.psd1`, commit `1b473b1`) -> W365's own
+  loopback -> LM Studio. Two candidate local/remote port pairs are PROPOSED there (58221/58222,
+  58231/58232) but NEITHER is reserved yet and the tunnel is NOT yet established (`-Mode Install`
+  needs elevation this automation could not obtain) — read the actual reserved port from that
+  config once it exists; do not hardcode either candidate pair here.
+
+  Default remains EMPTY STRING, deliberately: no local forwarded port has been confirmed live yet.
+  **This param is therefore UNKNOWN-by-default, not guessed.** An empty value means `-Route
+  lmstudio-w365` and the W365 row in `-StatusOnly` both report `NOT-CONFIGURED` without attempting
+  any network call. A NON-EMPTY value whose port does not yet answer reports `TUNNEL-NOT-
+  ESTABLISHED` (see `Get-KritOffloadLmStudioStatus`) — a distinct, honest state meaning the reverse
+  tunnel is the missing prerequisite, not that LM Studio itself is down. Fail fast either way,
+  never hang on a guessed address, and never silently fall through to a hosted provider without
+  naming which one actually served the call.
 
 .PARAMETER HostedProxyBase
   Tier 2 endpoint. Default http://127.0.0.1:4000/v1/chat/completions — the canonical
@@ -683,13 +724,20 @@ function Get-KritOffloadLmStudioStatus {
     # binary/model presence tells you nothing about whether LM Studio is installed over there -
     # skip that (local-only) check and report binary/model fields as $null/UNKNOWN rather than a
     # false NOT-INSTALLED derived from the wrong machine's filesystem.
+    #
+    # 🔴 CORRECTED 2026-08-02: $BaseUrl here MUST be a LOCAL LOOPBACK address on THIS box, forwarded
+    # by the SecureRemoteNetworking reverse tunnel -- never the W365 tailnet IP dialed directly
+    # (see the DESCRIPTION block / -LmStudioW365Base doc above for the full corrected architecture).
+    # A closed port at that LOCAL address means the TUNNEL is the missing prerequisite -- it is NOT
+    # evidence LM Studio itself is stopped or unreachable, so this branch no longer reports
+    # 'UNREACHABLE-OR-STOPPED' (a name that wrongly implied the far-end service was the problem).
     if ($RemoteNoLocalBinaryCheck) {
         if ([string]::IsNullOrWhiteSpace($BaseUrl)) {
             return [pscustomobject]@{
                 State = 'NOT-CONFIGURED'; BinaryPath = $null; BinaryPresent = $null
                 ModelsOnDiskCount = $null; ModelsOnDiskGB = $null; PortOpen = $false; LiveModelIds = @()
                 StartCommand = ''
-                Note = 'No -LmStudioW365Base was supplied - UNKNOWN whether the W365 box is reachable at all. No network call was attempted against a guessed address.'
+                Note = 'No -LmStudioW365Base was supplied. Once the SecureRemoteNetworking reverse tunnel is up, this must be a LOCAL loopback address (127.0.0.1:<forwarded-port>) on THIS box, never the W365 tailnet IP directly. No network call was attempted against a guessed address.'
             }
         }
         $portOpenRemote = Test-KritOffloadRouteReachable -BaseUrl $BaseUrl -TimeoutMs 1200
@@ -703,7 +751,7 @@ function Get-KritOffloadLmStudioStatus {
             }
         }
         return [pscustomobject]@{
-            State             = if ($portOpenRemote) { 'RUNNING-AND-ANSWERING' } else { 'UNREACHABLE-OR-STOPPED' }
+            State             = if ($portOpenRemote) { 'RUNNING-AND-ANSWERING' } else { 'TUNNEL-NOT-ESTABLISHED' }
             BinaryPath        = $null
             BinaryPresent     = $null
             ModelsOnDiskCount = $null
@@ -711,7 +759,11 @@ function Get-KritOffloadLmStudioStatus {
             PortOpen          = $portOpenRemote
             LiveModelIds      = $liveModelsRemote
             StartCommand      = ''
-            Note              = 'Remote (W365) target - local-machine binary/model-on-disk checks do not apply; only the network probe is meaningful here.'
+            Note              = if ($portOpenRemote) {
+                'Remote (W365) target via a local loopback forwarded port - local-machine binary/model-on-disk checks do not apply; only the network probe is meaningful here.'
+            } else {
+                'TUNNEL-NOT-ESTABLISHED: nothing answers at this LOCAL loopback address yet. Per the corrected 2026-08-02 architecture this means the SecureRemoteNetworking reverse tunnel is the missing prerequisite -- it does NOT mean LM Studio itself is stopped or unreachable (a loopback-bound LM Studio on the W365 box is invisible to any probe that is not routed through the tunnel, by design). Bring the tunnel up per Kritical.SecureRemoteNetworking\docs\REVERSE-TUNNEL-BIDIRECTIONAL-TAILNET-DESIGN-20260802.md, then re-probe.'
+            }
         }
     }
     $binaryPath = Join-Path $env:USERPROFILE '.lmstudio\bin\lms.exe'
@@ -827,7 +879,7 @@ if ($Sensitive) {
     } elseif ($lmW365Reachable) {
         $resolvedRoute = 'lmstudio-w365'
     } else {
-        $w365Detail = if ([string]::IsNullOrWhiteSpace($LmStudioW365Base)) { 'not configured (-LmStudioW365Base empty)' } else { "unreachable at $LmStudioW365Base" }
+        $w365Detail = if ([string]::IsNullOrWhiteSpace($LmStudioW365Base)) { 'not configured (-LmStudioW365Base empty)' } else { "tunnel-not-established at $LmStudioW365Base (this must be a LOCAL loopback forwarded port; a closed port here means the reverse tunnel is down, not that LM Studio itself is)" }
         $refusalReason = "SENSITIVE payload and Tier 1 (LM Studio) is UNREACHABLE - local at ${LmStudioBase}: unreachable; W365 leg: $w365Detail. " +
                           "Refusing to send — sensitive payloads are NEVER downgraded to a hosted provider."
     }
@@ -841,7 +893,7 @@ if ($Sensitive) {
         } elseif ($lmW365Reachable) {
             $resolvedRoute = 'lmstudio-w365'
         } else {
-            $refusalReason = "Explicit -Route lmstudio-w365 requested but is UNREACHABLE at $LmStudioW365Base (box/tunnel/LM Studio server not up)."
+            $refusalReason = "Explicit -Route lmstudio-w365 requested but is TUNNEL-NOT-ESTABLISHED at $LmStudioW365Base -- this must be a LOCAL loopback forwarded port; nothing answering there means the SecureRemoteNetworking reverse tunnel is down, not (necessarily) that LM Studio itself is stopped. See Kritical.SecureRemoteNetworking\\docs\\REVERSE-TUNNEL-BIDIRECTIONAL-TAILNET-DESIGN-20260802.md."
         }
     } elseif ($script:KritOffloadDirectProviders.Contains($Route)) {
         $st = $directStatus[$Route]
@@ -874,7 +926,7 @@ if ($Sensitive) {
     else {
         $reasons = @(
             "lmstudio-local ($LmStudioBase): unreachable"
-            "lmstudio-w365: $(if ([string]::IsNullOrWhiteSpace($LmStudioW365Base)) { 'not configured' } else { "unreachable at $LmStudioW365Base" })"
+            "lmstudio-w365: $(if ([string]::IsNullOrWhiteSpace($LmStudioW365Base)) { 'not configured' } else { "tunnel-not-established at $LmStudioW365Base (LOCAL loopback forwarded port; reverse tunnel is the likely missing piece, not LM Studio itself)" })"
             "nvidia-direct: $($directStatus['nvidia-direct'].Status) -- $($directStatus['nvidia-direct'].Reason)"
             "openrouter-direct: $($directStatus['openrouter-direct'].Status) -- $($directStatus['openrouter-direct'].Reason)"
             "kritical-litellm-docker ($HostedProxyBase): $(if ($hostedReachable) { 'reachable but no key' } else { 'unreachable (Docker daemon not running)' })"
