@@ -21,3 +21,6 @@ scripts/state/
 # Hand-authored docs/ findings and scripts/*.ps1 are deliberately NOT ignored.
 # Lens sweep run output: timestamped, regenerable
 scripts/output/
+
+# Kritical repo lane-lease (see Kritical.PS.GitHub Enter-KritRepoLease) -- never commit
+.kritical-lane-lock.json
