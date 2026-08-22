@@ -7,6 +7,21 @@
 
 ---
 
+> 🔴 **EXTRACTED 2026-08-22 (AEST) — five non-SCX-cloud-dependent components moved to a new repo.**
+> `mux/Invoke-KritOffload.ps1` + its test, `store-mcp/kritical-local-store.mjs`, the whole
+> `free-router/` directory (minus the SCX-only `agent-packs/scx-native.agent-pack.json`),
+> `ps-module/KriticalDecisionLogger.psm1` + `src-db/decision_log_schema.sql` +
+> `tests/Test-KriticalDecisionLogger.ps1` + `documentation/human/README.md`, and
+> `safety/Restore-WorkingClaude.ps1` are now maintained at
+> **[Kritical.PS.LocalAI](https://github.com/Sir-J-AU/Kritical.PS.LocalAI)** (history preserved via
+> `git filter-repo`; full record at that repo's `docs/EXTRACTION-RECORD-20260822.md`). The copies
+> remaining below in this repo are **historical/frozen** — read from the new repo, not from here,
+> for anything under those paths going forward. Nothing was deleted from this repo; everything else
+> here (the VS Code extension, the SCX chat MCP/PS surfaces, `codex-wrapper/`, the SCX-specific mux
+> matrix, SCX Lens scripts, the SCX LiteLLM installer) stays exactly where it is.
+
+---
+
 ## What it is
 
 Kritical.SCXCode is a monorepo that puts **Southern Cross AI (SCX)** at the centre of the developer workstation. It is not a fork of any upstream tool — every layer is additive and can be switched off independently (HR29). The operator's existing Codex CLI, Claude Code CLI, and VS Code editor remain fully functional whether Kritical's layer is running, degraded, or absent.
