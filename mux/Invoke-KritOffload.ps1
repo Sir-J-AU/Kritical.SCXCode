@@ -18,7 +18,10 @@
       🔴 STATUS AS OF 2026-08-01 (W365 leg): NOT YET LIVE. The W365 tailnet tunnel scripts have
       never been run on that box (ports 22/5986/1234 all measured closed) and LM Studio there
       shows "Status: Stopped". This is BUILT-AND-DOCUMENTED-ONLY — see
-      docs/OFFLOAD-LANE-HOWTO-20260801.md for exactly what is proven vs pending. This helper
+      docs/OFFLOAD-LANE-HOWTO-AND-MERGE-20260822.md for exactly what is proven vs pending
+      (2026-08-01 originally pointed at docs/OFFLOAD-LANE-HOWTO-20260801.md, a doc that was never
+      actually committed — that dead reference is fixed as of 2026-08-22, see the new doc's own
+      header for the full merge + refactor + live-proof record). This helper
       fails closed honestly: if -LmStudioBase is unreachable it says so by name and does not
       guess.
 
@@ -50,6 +53,20 @@
       state but this script does not add it to any AUTOMATIC non-sensitive routing preference
       beyond what already existed (Tier 1 first-if-reachable, unchanged) — it does not start it,
       and it does not silently assume any safety posture on the operator's behalf.
+
+      🔴 CORRECTED 2026-08-22 08:04 AEST (+10:00), VERIFIED-BY-EXECUTION (lane
+      lmstudio-offload-merge-20260822): the 2026-08-02 "INSTALLED-NOT-RUNNING" state above is
+      STALE for the laptop leg. `GET http://127.0.0.1:1234/v1/models` on THIS machine (Stacktrace)
+      returned HTTP 200 with 11 models loaded (e.g. `openai/gpt-oss-20b`, `google/gemma-4-e4b`,
+      `qwen/qwen3.5-9b`, `deepseek/deepseek-r1-0528-qwen3-8b`) at the time this note was written —
+      re-verify with the same command before relying on it, since this is a locally-run desktop
+      app the operator can stop at any time and this script correctly never assumes it is up. This
+      correction does not change `Get-KritOffloadLmStudioStatus`'s mechanism (it still TCP-probes
+      live, never trusts a cached/hardcoded state) — it only corrects this comment, which a reader
+      could otherwise mistake for the current true state. `Invoke-KritOffloadLmStudioCall` (below)
+      was also refactored the same session to call `Kritical.PS.LMStudioAPI`'s
+      `New-KritLMStudioChatcompletion` instead of hand-rolling its own REST POST — see that
+      function's own `.NOTES` block.
 
       🔴 CORRECTED 2026-08-02 (coordinator correction, after an earlier framing of this section
       was wrong and was relayed as fact): the operator has CONFIRMED LM Studio IS on the W365
@@ -681,20 +698,100 @@ function script:Invoke-KritOffloadHostedCall {
     }
 }
 
+function script:Resolve-KritOffloadLmStudioApiModulePath {
+    <#
+      .SYNOPSIS
+        Locate Kritical.PS.LMStudioAPI's client module (Krit.LMStudioOpenApi.psm1) so
+        Invoke-KritOffloadLmStudioCall can call New-KritLMStudioChatcompletion instead of
+        hand-rolling its own Invoke-RestMethod POST (estate CLAUDE.md RULE ZERO — "extend, never
+        rebuild" — a real, tested, generated client already exists; see
+        C:\Users\joshl\OneDrive - Kritical Pty Ltd\Github\Kritical.PS.LMStudioAPI\docs\GATE-FINDINGS-20260802.md).
+      .NOTES
+        RULE ZERO-C (settings-owned config): the path is resolved, not hardcoded as the only
+        option — an explicit override env var wins, then a sibling-checkout relative path (works
+        if Kritical.SCXCode is ever checked out standalone next to Kritical.PS.LMStudioAPI under a
+        common Github root), then the known absolute OneDrive path on THIS operator's machine
+        (Stacktrace) as a last-resort default, since on this machine Kritical.SCXCode's real
+        content is reached only via the Kritical.Lens submodule mount, not a standalone checkout
+        (`Github\Kritical.SCXCode` there is a hollow OneDrive placeholder, not real content).
+    #>
+    [CmdletBinding()]
+    param()
+    $candidates = [System.Collections.Generic.List[string]]::new()
+    if ($env:KRIT_LMSTUDIOAPI_MODULE_PATH) { $candidates.Add($env:KRIT_LMSTUDIOAPI_MODULE_PATH) }
+    $candidates.Add((Join-Path $PSScriptRoot '..\..\Kritical.PS.LMStudioAPI\src\Krit.LMStudioOpenApi.psm1'))
+    $candidates.Add('C:\Users\joshl\OneDrive - Kritical Pty Ltd\Github\Kritical.PS.LMStudioAPI\src\Krit.LMStudioOpenApi.psm1')
+    foreach ($c in $candidates) {
+        if ($c -and (Test-Path $c)) { return (Resolve-Path $c).Path }
+    }
+    throw "Resolve-KritOffloadLmStudioApiModulePath: could not find Krit.LMStudioOpenApi.psm1 in any candidate location ($($candidates -join ' | ')). Set `$env:KRIT_LMSTUDIOAPI_MODULE_PATH to override."
+}
+
 function script:Invoke-KritOffloadLmStudioCall {
+    <#
+      .NOTES
+        REFACTORED 2026-08-22 (lane lmstudio-offload-merge-20260822, per estate CLAUDE.md RULE
+        ZERO): this used to hand-roll its own Invoke-RestMethod POST to /chat/completions. It now
+        calls Kritical.PS.LMStudioAPI's New-KritLMStudioChatcompletion — a real, tested, generated
+        client proven live 2026-08-02 (5 real generator bugs found/fixed against a live server;
+        see that repo's docs\GATE-FINDINGS-20260802.md). All the surrounding tier-routing /
+        audit-log / credential-scan / refusal-gate logic in this file is UNCHANGED — only the
+        actual HTTP call moved.
+
+        New-KritLMStudioChatcompletion does not take a -Base parameter; it resolves its base URI
+        from $env:KRIT_LMSTUDIO_BASE_URI (module default http://127.0.0.1:1234, no /v1 suffix --
+        the client appends /v1/... itself). This function's own $Base carries the offload script's
+        convention of a trailing /v1 (e.g. http://127.0.0.1:1234/v1), so it strips that suffix,
+        sets the env var for the duration of ONE call, and restores the prior value afterward
+        (script-scoped $env: mutation is process-wide, not call-scoped, so this must be
+        save/restore, not set-and-forget -- matters because this function may be called twice in
+        one process for -Route auto, once for -LmStudioBase then once for -LmStudioW365Base).
+
+        🔴 MODEL ID, FIXED LIVE 2026-08-22: the hand-rolled version this replaced sent
+        `model: 'local-model'` and LM Studio accepted it as a wildcard/passthrough alias for
+        "whichever model is loaded". `New-KritLMStudioChatcompletion` against the SAME live server
+        (`http://127.0.0.1:1234`) REJECTS that literal — HTTP 400 `model_not_found`:
+        `"Invalid model identifier \"local-model\". Please specify a valid downloaded model (e.g.,
+        microsoft/phi-4-reasoning-plus@q4_k_m, microsoft/phi-4-reasoning-plus,
+        phi-4-reasoning-plus)."` -- VERIFIED-BY-EXECUTION this session (see
+        docs/OFFLOAD-LANE-HOWTO-AND-MERGE-20260822.md for the raw transcript). So this function no
+        longer hardcodes any specific model id (RULE ZERO-C -- that would also silently break the
+        moment the operator swaps loaded models) -- it resolves a REAL currently-loaded chat model
+        by calling Get-KritLMStudioModelsopenai and picking the first entry whose id does not look
+        like an embeddings model (embeddings models 400 on /chat/completions too; excluded by
+        matching 'embed' case-insensitively, since LM Studio's own naming convention for them
+        always includes that word, e.g. nomic-ai/nomic-embed-text-v1.5-GGUF).
+    #>
     param([string]$Prompt, [string]$System, [int]$MaxTokens, [double]$Temperature, [string]$Base)
+
+    $lmStudioModulePath = Resolve-KritOffloadLmStudioApiModulePath
+    Import-Module $lmStudioModulePath -Force -ErrorAction Stop
+
     $messages = @()
     if ($System) { $messages += @{ role = 'system'; content = $System } }
     $messages += @{ role = 'user'; content = $Prompt }
-    $body = @{ model = 'local-model'; messages = $messages; max_tokens = $MaxTokens; temperature = $Temperature } | ConvertTo-Json -Depth 8
-    $uri = "$($Base.TrimEnd('/'))/chat/completions"
-    $r = Invoke-RestMethod -Uri $uri -Method Post -TimeoutSec 300 -ContentType 'application/json' -Body $body
+
+    $baseNoV1 = ($Base.TrimEnd('/')) -replace '/v1$', ''
+    $prevBaseUri = $env:KRIT_LMSTUDIO_BASE_URI
+    $env:KRIT_LMSTUDIO_BASE_URI = $baseNoV1
+    try {
+        $modelList = Get-KritLMStudioModelsopenai
+        $chatModel = $modelList.data | Where-Object { $_.id -notmatch '(?i)embed' } | Select-Object -First 1 -ExpandProperty id
+        if (-not $chatModel) {
+            throw "Invoke-KritOffloadLmStudioCall: no non-embedding model is loaded at $baseNoV1 (Get-KritLMStudioModelsopenai returned $(@($modelList.data).Count) model(s), all embedding-shaped). Load a chat model in LM Studio first."
+        }
+        $r = New-KritLMStudioChatcompletion -Model $chatModel -Messages $messages -MaxTokens $MaxTokens -Temperature $Temperature -TimeoutSec 300 -Confirm:$false
+    } finally {
+        if ($null -eq $prevBaseUri) { Remove-Item Env:\KRIT_LMSTUDIO_BASE_URI -ErrorAction SilentlyContinue }
+        else { $env:KRIT_LMSTUDIO_BASE_URI = $prevBaseUri }
+    }
+
     $content = [string]$r.choices[0].message.content
     if ([string]::IsNullOrWhiteSpace($content)) {
         # "silent success is failure" — an OpenAI-compatible 200 with an empty message body is a
         # real observed failure mode (measured 2026-08-02 on a reasoning model via a different
         # route), never a pass. Callers of this function see FinishReason/Usage to diagnose.
-        Write-Warning "Invoke-KritOffloadLmStudioCall: HTTP 200 from $uri but EMPTY content (finish_reason=$($r.choices[0].finish_reason)). Treat as a failed call, not a quiet success."
+        Write-Warning "Invoke-KritOffloadLmStudioCall: HTTP 200 via Kritical.PS.LMStudioAPI (base=$baseNoV1) but EMPTY content (finish_reason=$($r.choices[0].finish_reason)). Treat as a failed call, not a quiet success."
     }
     [pscustomobject]@{
         ReportedModel = $r.model

@@ -154,9 +154,21 @@ Assert-KritOffloadCase -Name 'lmstudio-w365-not-configured-refuses-fast' -Expect
 }
 
 # ---- 10. An explicit but UNREACHABLE lmstudio-w365 base (garbage address, closed port) refuses
-#          with an UNREACHABLE reason, distinct from NOT-CONFIGURED — proves the two failure modes
-#          are told apart, not collapsed into one generic error. ----
-Assert-KritOffloadCase -Name 'lmstudio-w365-configured-but-unreachable-refuses' -ExpectThrow $true -ExpectMessageMatch 'UNREACHABLE' -Body {
+#          with a reason distinct from NOT-CONFIGURED — proves the two failure modes are told
+#          apart, not collapsed into one generic error.
+#          🔴 FIXED 2026-08-22 (lane lmstudio-offload-merge-20260822): the assertion regex was
+#          /UNREACHABLE/, a PRE-EXISTING bug dating to commit 52df5a4 ("Correct W365 offload
+#          tunnel semantics", 2026-08-07) — that commit deliberately renamed this refusal's wording
+#          from "UNREACHABLE at ..." to "TUNNEL-NOT-ESTABLISHED at ..." (a real, intentional
+#          precision improvement: an unreachable LOCAL loopback port means the reverse tunnel is
+#          down, not that LM Studio itself is unreachable) but never updated this test file in the
+#          same commit, so this case had been RED ever since (proven: git show 52df5a4 --stat does
+#          not list mux/Invoke-KritOffload.test.ps1 among the changed files). Not introduced by, or
+#          related to, the same-session Kritical.PS.LMStudioAPI client refactor — that refactor
+#          only touches Invoke-KritOffloadLmStudioCall, which this refusal path never reaches (it
+#          throws in MAIN before any LM Studio call is attempted). Fixed here by matching the
+#          CURRENT, intentional wording rather than reverting the production message. ----
+Assert-KritOffloadCase -Name 'lmstudio-w365-configured-but-unreachable-refuses' -ExpectThrow $true -ExpectMessageMatch 'TUNNEL-NOT-ESTABLISHED' -Body {
     & $scriptPath -Prompt 'test' -Route lmstudio-w365 -LmStudioW365Base 'http://127.0.0.1:1/definitely-closed'
 }
 
