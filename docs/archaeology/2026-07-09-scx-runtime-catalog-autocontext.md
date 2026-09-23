@@ -1,3 +1,14 @@
+<!-- KRIT-DOC-NEUTER-CODE-SAMPLES kes-SUBMOD-20260923 2026-09-23
+2 further dead or hazardous reference(s) appear in this document ONLY INSIDE A
+CODE EXAMPLE OR INSIDE A URL, and were deliberately NOT marked inline. A marker inside a fenced
+block or an inline span does not render, and it turns a copy-pasteable command into one that cannot
+run; a marker through the middle of a URL leaves a link that no longer resolves. So the code and the
+links are left exactly as they were and the references are named here instead. THEY ARE STILL DEAD
+OR STILL HAZARDOUS. Do not copy a command or follow a link below without resolving these through the
+switcher first:
+  - KRIT_LOCAL_STORE (cred-name, inside a code sample)
+  - kritical-codex (service-name, inside a code sample)
+-->
 # 2026-07-09 SCX Runtime Catalog, Autocontext, Storage, And Mux Archaeology
 
 This note captures the current state of the SCX-facing runtime lane after the model-catalog and VS Code setup pass.

@@ -1,3 +1,16 @@
+<!-- KRIT-DOC-NEUTER-CODE-SAMPLES kes-SUBMOD-20260923 2026-09-23
+4 further dead or hazardous reference(s) appear in this document ONLY INSIDE A
+CODE EXAMPLE OR INSIDE A URL, and were deliberately NOT marked inline. A marker inside a fenced
+block or an inline span does not render, and it turns a copy-pasteable command into one that cannot
+run; a marker through the middle of a URL leaves a link that no longer resolves. So the code and the
+links are left exactly as they were and the references are named here instead. THEY ARE STILL DEAD
+OR STILL HAZARDOUS. Do not copy a command or follow a link below without resolving these through the
+switcher first:
+  - 4181 (port, inside a code sample)
+  - http://127.0.0.1:4180/admin/kill (url, inside a code sample)
+  - http://127.0.0.1:4180/v1/auto-continue (url, inside a code sample)
+  - KRITICAL_LOGGER_TARGET (cred-name, inside a code sample)
+-->
 # Kritical.NodeJS.SCXCodeAgent
 
 > Node.js bridge daemon — multi-provider (SCX + Anthropic + OpenAI + generic) with auto-continuation, web tools, and HR27 write-through. **Additive layer** — turn it off and every downstream agent (Claude Code / Codex / SCX PS module) reverts to talking to real provider APIs directly.
