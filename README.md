@@ -1,15 +1,16 @@
-<!-- KRIT-DOC-NEUTER-CODE-SAMPLES kes-SUBMOD-20260923 2026-09-23
-3 further dead or hazardous reference(s) appear in this document ONLY INSIDE A
-CODE EXAMPLE OR INSIDE A URL, and were deliberately NOT marked inline. A marker inside a fenced
-block or an inline span does not render, and it turns a copy-pasteable command into one that cannot
-run; a marker through the middle of a URL leaves a link that no longer resolves. So the code and the
-links are left exactly as they were and the references are named here instead. THEY ARE STILL DEAD
-OR STILL HAZARDOUS. Do not copy a command or follow a link below without resolving these through the
-switcher first:
-  - kritical-codex (service-name, inside a code sample)
-  - kritical-local-store (service-name, inside a code sample)
-  - kritical-scxcode (service-name, inside a code sample)
--->
+> **AI: UNMOUNT THESE REFERENCES -- KRIT-DOC-NEUTER-CODE-SAMPLES kes-SUBMOD-20260923 2026-09-23**
+>
+> 3 further dead or hazardous reference(s) appear in this document ONLY INSIDE A
+> CODE EXAMPLE OR INSIDE A URL, and were deliberately NOT marked inline. A marker inside a fenced
+> block or an inline span does not render, and it turns a copy-pasteable command into one that cannot
+> run; a marker through the middle of a URL leaves a link that no longer resolves. So the code and the
+> links are left exactly as they were and the references are named here instead. THEY ARE STILL DEAD
+> OR STILL HAZARDOUS. Do not copy a command or follow a link below without resolving these through the
+> switcher first:
+>   - kritical-codex (service-name, inside a code sample)
+>   - kritical-local-store (service-name, inside a code sample)
+>   - kritical-scxcode (service-name, inside a code sample)
+
 # Kritical.SCXCode
 
 **Sovereign Southern Cross AI inside VS Code — agentic Codex-on-SCX via the flatten-shim, PowerShell client, MCP server, Node bulk-writer, multi-model mux, and the Lens Looking Glass.**
