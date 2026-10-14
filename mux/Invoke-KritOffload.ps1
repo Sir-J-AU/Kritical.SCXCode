@@ -18,7 +18,10 @@
       🔴 STATUS AS OF 2026-08-01 (W365 leg): NOT YET LIVE. The W365 tailnet tunnel scripts have
       never been run on that box (ports 22/5986/1234 all measured closed) and LM Studio there
       shows "Status: Stopped". This is BUILT-AND-DOCUMENTED-ONLY — see
-      docs/OFFLOAD-LANE-HOWTO-20260801.md for exactly what is proven vs pending. This helper
+      docs/OFFLOAD-LANE-HOWTO-AND-MERGE-20260822.md for exactly what is proven vs pending
+      (2026-08-01 originally pointed at docs/OFFLOAD-LANE-HOWTO-20260801.md, a doc that was never
+      actually committed — that dead reference is fixed as of 2026-08-22, see the new doc's own
+      header for the full merge + refactor + live-proof record). This helper
       fails closed honestly: if -LmStudioBase is unreachable it says so by name and does not
       guess.
 
@@ -50,6 +53,77 @@
       state but this script does not add it to any AUTOMATIC non-sensitive routing preference
       beyond what already existed (Tier 1 first-if-reachable, unchanged) — it does not start it,
       and it does not silently assume any safety posture on the operator's behalf.
+
+      🔴 CORRECTED 2026-08-22 08:04 AEST (+10:00), VERIFIED-BY-EXECUTION (lane
+      lmstudio-offload-merge-20260822): the 2026-08-02 "INSTALLED-NOT-RUNNING" state above is
+      STALE for the laptop leg. `GET http://127.0.0.1:1234/v1/models` on THIS machine (Stacktrace)
+      returned HTTP 200 with 11 models loaded (e.g. `openai/gpt-oss-20b`, `google/gemma-4-e4b`,
+      `qwen/qwen3.5-9b`, `deepseek/deepseek-r1-0528-qwen3-8b`) at the time this note was written —
+      re-verify with the same command before relying on it, since this is a locally-run desktop
+      app the operator can stop at any time and this script correctly never assumes it is up. This
+      correction does not change `Get-KritOffloadLmStudioStatus`'s mechanism (it still TCP-probes
+      live, never trusts a cached/hardcoded state) — it only corrects this comment, which a reader
+      could otherwise mistake for the current true state. `Invoke-KritOffloadLmStudioCall` (below)
+      was also refactored the same session to call `Kritical.PS.LMStudioAPI`'s
+      `New-KritLMStudioChatcompletion` instead of hand-rolling its own REST POST — see that
+      function's own `.NOTES` block.
+
+      🔴 CORRECTED 2026-08-02 (coordinator correction, after an earlier framing of this section
+      was wrong and was relayed as fact): the operator has CONFIRMED LM Studio IS on the W365
+      host. The prior claim that `Test-NetConnection 100.94.243.73 -Port 1234` coming back closed
+      meant LM Studio was "Stopped"/not running CONFLATED "not reachable from an external probe"
+      with "not running". A loopback-bound LM Studio (127.0.0.1:1234 on the W365 box itself,
+      never 0.0.0.0) is INVISIBLE to an external port probe by design — that is the CORRECT and
+      EXPECTED result for a correctly-configured box, not evidence of absence. Do not repeat the
+      "ports closed -> Stopped" inference again.
+
+      🔴 THE ROUTE THEREFORE NEVER DIALS THE TAILNET ADDRESS DIRECTLY. `-LmStudioW365Base` must be
+      a LOCAL LOOPBACK address ON THIS MACHINE (`127.0.0.1:<forwarded-port>/v1`), never
+      `<tailnet-addr>:1234` — dialing the tailnet IP would require W365 to expose port 1234 on a
+      routable interface, which the architecture forbids outright (see point 2 below). The real
+      traffic path is: this script -> `127.0.0.1:<forwarded-port>` on THIS box -> an established
+      OUTBOUND reverse SSH tunnel -> W365's own loopback -> LM Studio. No inbound port is opened on
+      either side.
+
+      🔴 THE REVERSE TUNNEL DESIGN LANDED 2026-08-02 (commit `1b473b1`), NOT YET UP. Read
+      `C:\Users\joshl\OneDrive - Kritical Pty Ltd\Github\Kritical.SecureRemoteNetworking\docs\REVERSE-TUNNEL-BIDIRECTIONAL-TAILNET-DESIGN-20260802.md`
+      and `C:\Users\joshl\OneDrive - Kritical Pty Ltd\Github\Kritical.SecureRemoteNetworking\config\srn.config.psd1`
+      for the authoritative, regenerable source of the forwarded-port pair. Two candidate pairs
+      are proposed there (58221/58222 and 58231/58232) but neither is reserved yet, and
+      `-Mode Install` has not completed (needs elevation the automation could not obtain) — so as
+      of this correction the tunnel is NOT established. Take the local forwarded port FROM that
+      config, not from a value hardcoded in this file.
+
+      OPERATOR-ONLY — exact steps to make `-Route lmstudio-w365` real. This script does not, and
+      per standing rule must not, perform any of these — no automatic service startup without
+      typed-ack + rehearsal, and no credentialed remote session may be opened to W365 or used to
+      exec there:
+        1. On the W365 Cloud PC itself (RDP/console session, operator-driven, if not already
+           running): start LM Studio's local server — `lms.exe server start` — ONLY after setting
+           whatever thermal/context/memory safety options the operator decides on for that box
+           (same open item as the laptop leg above; no specific values are assumed here). LM
+           Studio's OpenAI-compatible server binds to `127.0.0.1:1234` on that box — never
+           `0.0.0.0` — and port 1234 itself is NEVER forwarded across any tunnel (that would push
+           raw GPU inference traffic over the wire and require an inbound-exposed port).
+        2. Bring up the REVERSE tunnel per the SRN design doc above (`-Mode Install`, needs
+           elevation) so a LOCAL port on THIS box (one of the reserved pairs, e.g. `58222`) forwards
+           to LM Studio's loopback `1234` on the W365 box. Outbound-only, no inbound port on either
+           side — that is the entire point of "reverse".
+        3. Pass the resulting LOCAL loopback address as
+           `-LmStudioW365Base 'http://127.0.0.1:<forwarded-port>/v1'` (read the actual reserved
+           port from `srn.config.psd1` rather than assuming one of the two proposed pairs — they
+           are PROPOSED, not yet reserved as of this correction).
+        4. Confirm with `Invoke-KritOffload -StatusOnly` — the `lmstudio-w365 (Cloud PC)` row must
+           read `RUNNING-AND-ANSWERING` before relying on `-Route auto` or `-Route lmstudio-w365`
+           for anything. Until then it correctly reports one of two DISTINCT, HONEST states (see
+           `Get-KritOffloadLmStudioStatus`'s `-RemoteNoLocalBinaryCheck` branch below) —
+           `NOT-CONFIGURED` (no base given at all) or `TUNNEL-NOT-ESTABLISHED` (a LOCAL loopback
+           base was given but nothing answers there yet, meaning the reverse tunnel itself is the
+           missing prerequisite — NOT that LM Studio is down or firewalled correctly). These two
+           states are deliberately distinct from each other and from `RUNNING-AND-ANSWERING`: fail
+           fast and visibly when the tunnel is down, and if `-Route auto` ever falls through to a
+           different (hosted) provider, the resolved provider is always named in the result — never
+           a silent substitution.
 
     TIER 2 (overflow, NON-sensitive payloads ONLY, ONLY after the egress scan passes) —
       the canonical `kritical-litellm-router` Docker container on the LAPTOP,
@@ -184,13 +258,20 @@
   ONLY allowed destination. If Tier 1 is unreachable, this REFUSES rather than falling back.
 
 .PARAMETER Route
-  'auto' (default) | 'lmstudio' | 'kritical-openrouter' | 'kritical-nvidia' | 'kritical-mistral'.
-  'auto' tries LM Studio (Tier 1) first, then falls to 'kritical-openrouter' on the hosted
-  container (the Tier-2 route proven reliable as of 2026-08-01 — see the HOWTO doc's per-route
-  PASS/FAIL table before relying on kritical-mistral). 'kritical-coding', 'kritical-scx', and any
-  'kritical-thegrid*' name are DELIBERATELY NOT in this set — see the thegrid-budget guard above.
+  'auto' (default) | 'lmstudio-local' | 'lmstudio-w365' | 'lmstudio' (legacy synonym for
+  'lmstudio-local') | 'kritical-openrouter' | 'kritical-nvidia' | 'kritical-mistral' |
+  'nvidia-direct' | 'openrouter-direct' | 'mistral-direct'.
+  'auto' tries LM Studio local (Tier 1) first, then LM Studio W365 (also Tier 1, same
+  data-locality guarantee) if configured and local is unreachable, then falls to
+  'kritical-openrouter' on the hosted container (the Tier-2 route proven reliable as of
+  2026-08-01 — see the HOWTO doc's per-route PASS/FAIL table before relying on kritical-mistral).
+  'kritical-coding', 'kritical-scx', and any 'kritical-thegrid*' name are DELIBERATELY NOT in this
+  set — see the thegrid-budget guard above.
   An EXPLICIT route is honoured exactly — if it is unreachable this errors rather than silently
   substituting another route, because the caller asked for a specific model for a reason.
+  🔴 'lmstudio-w365' with no -LmStudioW365Base configured REFUSES FAST with a NOT-CONFIGURED
+  message — it never attempts a network call against a guessed address, and 'auto' never treats
+  an unconfigured W365 leg as "reachable" (silently skips it, does not hang waiting on it).
 
 .PARAMETER DryRun
   Show EXACTLY what would be sent (resolved route + the redacted payload + the audit-log entry
@@ -213,12 +294,36 @@
   empty/truncated response as "the route is down" — it may just be starved.
 
 .PARAMETER LmStudioBase
-  Tier 1 endpoint. Default http://127.0.0.1:1234/v1 — the LOCAL address LM Studio's OpenAI-
-  compatible server listens on. On the CURRENT (2026-08-01) architecture this is only reachable
-  from the laptop once (a) the W365 box has LiteLLM running next to LM Studio, and (b) ONE port
-  (LiteLLM's, not LM Studio's) is tunneled/forwarded to this address. Do NOT tunnel LM Studio's
-  1234 directly to the laptop — that would push raw GPU inference traffic over the tunnel; tunnel
-  LiteLLM instead and let it reach LM Studio over localhost on the W365 box itself.
+  Tier 1 endpoint — THIS LAPTOP's local LM Studio (`-Route lmstudio-local`, or the legacy
+  `-Route lmstudio` name kept as a synonym for it). Default http://127.0.0.1:1234/v1. Verified
+  live 2026-08-02: INSTALLED-NOT-RUNNING on this machine (binary + 37GB/4 models present, port
+  closed).
+
+.PARAMETER LmStudioW365Base
+  🔴 ADDED 2026-08-02 (operator: "AND OR TO LM STUDIO @W365BOX"), CORRECTED 2026-08-02 (coordinator
+  correction — see the DESCRIPTION block above for the full account of what was wrong). The
+  operator has CONFIRMED LM Studio IS on the W365 host; a closed port on an external probe was
+  the CORRECT and EXPECTED result of its loopback-only binding, not evidence it was stopped.
+
+  🔴 THIS MUST BE A LOCAL LOOPBACK ADDRESS ON THIS MACHINE
+  (`http://127.0.0.1:<forwarded-port>/v1`) — NEVER the W365 tailnet IP directly. Dialing the
+  tailnet IP would require W365 to expose port 1234 on a routable interface, which this
+  architecture forbids. The real path is this box's loopback -> an OUTBOUND reverse SSH tunnel
+  (design + config: `Kritical.SecureRemoteNetworking\docs\REVERSE-TUNNEL-BIDIRECTIONAL-TAILNET-DESIGN-20260802.md`,
+  `Kritical.SecureRemoteNetworking\config\srn.config.psd1`, commit `1b473b1`) -> W365's own
+  loopback -> LM Studio. Two candidate local/remote port pairs are PROPOSED there (58221/58222,
+  58231/58232) but NEITHER is reserved yet and the tunnel is NOT yet established (`-Mode Install`
+  needs elevation this automation could not obtain) — read the actual reserved port from that
+  config once it exists; do not hardcode either candidate pair here.
+
+  Default remains EMPTY STRING, deliberately: no local forwarded port has been confirmed live yet.
+  **This param is therefore UNKNOWN-by-default, not guessed.** An empty value means `-Route
+  lmstudio-w365` and the W365 row in `-StatusOnly` both report `NOT-CONFIGURED` without attempting
+  any network call. A NON-EMPTY value whose port does not yet answer reports `TUNNEL-NOT-
+  ESTABLISHED` (see `Get-KritOffloadLmStudioStatus`) — a distinct, honest state meaning the reverse
+  tunnel is the missing prerequisite, not that LM Studio itself is down. Fail fast either way,
+  never hang on a guessed address, and never silently fall through to a hosted provider without
+  naming which one actually served the call.
 
 .PARAMETER HostedProxyBase
   Tier 2 endpoint. Default http://127.0.0.1:4000/v1/chat/completions — the canonical
@@ -295,7 +400,7 @@ param(
     [switch]$StatusOnly,
     [string]$System,
     [switch]$Sensitive,
-    [ValidateSet('auto','lmstudio','kritical-openrouter','kritical-nvidia','kritical-mistral','nvidia-direct','openrouter-direct','mistral-direct')]
+    [ValidateSet('auto','lmstudio','lmstudio-local','lmstudio-w365','kritical-openrouter','kritical-nvidia','kritical-mistral','nvidia-direct','openrouter-direct','mistral-direct')]
     [string]$Route = 'auto',
     [ValidateSet('bulk-text','scan','inventory','draft','boilerplate','judgement','gate-verdict','adversarial-refutation','correctness-decision')]
     [string]$Purpose = 'bulk-text',
@@ -305,6 +410,7 @@ param(
     [int]$MaxTokens = 512,
     [double]$Temperature = 0,
     [string]$LmStudioBase = 'http://127.0.0.1:1234/v1',
+    [string]$LmStudioW365Base = '',
     [string]$HostedProxyBase = 'http://127.0.0.1:4000/v1/chat/completions',
     [string]$HostedProxyKeyFile = 'C:\Users\joshl\OneDrive - Kritical Pty Ltd\Github\Kritical.AgenticDevelopment\.kritical\litellm-proxy-master-key.txt',
     [string]$NvidiaApiKey,
@@ -592,20 +698,100 @@ function script:Invoke-KritOffloadHostedCall {
     }
 }
 
+function script:Resolve-KritOffloadLmStudioApiModulePath {
+    <#
+      .SYNOPSIS
+        Locate Kritical.PS.LMStudioAPI's client module (Krit.LMStudioOpenApi.psm1) so
+        Invoke-KritOffloadLmStudioCall can call New-KritLMStudioChatcompletion instead of
+        hand-rolling its own Invoke-RestMethod POST (estate CLAUDE.md RULE ZERO — "extend, never
+        rebuild" — a real, tested, generated client already exists; see
+        C:\Users\joshl\OneDrive - Kritical Pty Ltd\Github\Kritical.PS.LMStudioAPI\docs\GATE-FINDINGS-20260802.md).
+      .NOTES
+        RULE ZERO-C (settings-owned config): the path is resolved, not hardcoded as the only
+        option — an explicit override env var wins, then a sibling-checkout relative path (works
+        if Kritical.SCXCode is ever checked out standalone next to Kritical.PS.LMStudioAPI under a
+        common Github root), then the known absolute OneDrive path on THIS operator's machine
+        (Stacktrace) as a last-resort default, since on this machine Kritical.SCXCode's real
+        content is reached only via the Kritical.Lens submodule mount, not a standalone checkout
+        (`Github\Kritical.SCXCode` there is a hollow OneDrive placeholder, not real content).
+    #>
+    [CmdletBinding()]
+    param()
+    $candidates = [System.Collections.Generic.List[string]]::new()
+    if ($env:KRIT_LMSTUDIOAPI_MODULE_PATH) { $candidates.Add($env:KRIT_LMSTUDIOAPI_MODULE_PATH) }
+    $candidates.Add((Join-Path $PSScriptRoot '..\..\Kritical.PS.LMStudioAPI\src\Krit.LMStudioOpenApi.psm1'))
+    $candidates.Add('C:\Users\joshl\OneDrive - Kritical Pty Ltd\Github\Kritical.PS.LMStudioAPI\src\Krit.LMStudioOpenApi.psm1')
+    foreach ($c in $candidates) {
+        if ($c -and (Test-Path $c)) { return (Resolve-Path $c).Path }
+    }
+    throw "Resolve-KritOffloadLmStudioApiModulePath: could not find Krit.LMStudioOpenApi.psm1 in any candidate location ($($candidates -join ' | ')). Set `$env:KRIT_LMSTUDIOAPI_MODULE_PATH to override."
+}
+
 function script:Invoke-KritOffloadLmStudioCall {
+    <#
+      .NOTES
+        REFACTORED 2026-08-22 (lane lmstudio-offload-merge-20260822, per estate CLAUDE.md RULE
+        ZERO): this used to hand-roll its own Invoke-RestMethod POST to /chat/completions. It now
+        calls Kritical.PS.LMStudioAPI's New-KritLMStudioChatcompletion — a real, tested, generated
+        client proven live 2026-08-02 (5 real generator bugs found/fixed against a live server;
+        see that repo's docs\GATE-FINDINGS-20260802.md). All the surrounding tier-routing /
+        audit-log / credential-scan / refusal-gate logic in this file is UNCHANGED — only the
+        actual HTTP call moved.
+
+        New-KritLMStudioChatcompletion does not take a -Base parameter; it resolves its base URI
+        from $env:KRIT_LMSTUDIO_BASE_URI (module default http://127.0.0.1:1234, no /v1 suffix --
+        the client appends /v1/... itself). This function's own $Base carries the offload script's
+        convention of a trailing /v1 (e.g. http://127.0.0.1:1234/v1), so it strips that suffix,
+        sets the env var for the duration of ONE call, and restores the prior value afterward
+        (script-scoped $env: mutation is process-wide, not call-scoped, so this must be
+        save/restore, not set-and-forget -- matters because this function may be called twice in
+        one process for -Route auto, once for -LmStudioBase then once for -LmStudioW365Base).
+
+        🔴 MODEL ID, FIXED LIVE 2026-08-22: the hand-rolled version this replaced sent
+        `model: 'local-model'` and LM Studio accepted it as a wildcard/passthrough alias for
+        "whichever model is loaded". `New-KritLMStudioChatcompletion` against the SAME live server
+        (`http://127.0.0.1:1234`) REJECTS that literal — HTTP 400 `model_not_found`:
+        `"Invalid model identifier \"local-model\". Please specify a valid downloaded model (e.g.,
+        microsoft/phi-4-reasoning-plus@q4_k_m, microsoft/phi-4-reasoning-plus,
+        phi-4-reasoning-plus)."` -- VERIFIED-BY-EXECUTION this session (see
+        docs/OFFLOAD-LANE-HOWTO-AND-MERGE-20260822.md for the raw transcript). So this function no
+        longer hardcodes any specific model id (RULE ZERO-C -- that would also silently break the
+        moment the operator swaps loaded models) -- it resolves a REAL currently-loaded chat model
+        by calling Get-KritLMStudioModelsopenai and picking the first entry whose id does not look
+        like an embeddings model (embeddings models 400 on /chat/completions too; excluded by
+        matching 'embed' case-insensitively, since LM Studio's own naming convention for them
+        always includes that word, e.g. nomic-ai/nomic-embed-text-v1.5-GGUF).
+    #>
     param([string]$Prompt, [string]$System, [int]$MaxTokens, [double]$Temperature, [string]$Base)
+
+    $lmStudioModulePath = Resolve-KritOffloadLmStudioApiModulePath
+    Import-Module $lmStudioModulePath -Force -ErrorAction Stop
+
     $messages = @()
     if ($System) { $messages += @{ role = 'system'; content = $System } }
     $messages += @{ role = 'user'; content = $Prompt }
-    $body = @{ model = 'local-model'; messages = $messages; max_tokens = $MaxTokens; temperature = $Temperature } | ConvertTo-Json -Depth 8
-    $uri = "$($Base.TrimEnd('/'))/chat/completions"
-    $r = Invoke-RestMethod -Uri $uri -Method Post -TimeoutSec 300 -ContentType 'application/json' -Body $body
+
+    $baseNoV1 = ($Base.TrimEnd('/')) -replace '/v1$', ''
+    $prevBaseUri = $env:KRIT_LMSTUDIO_BASE_URI
+    $env:KRIT_LMSTUDIO_BASE_URI = $baseNoV1
+    try {
+        $modelList = Get-KritLMStudioModelsopenai
+        $chatModel = $modelList.data | Where-Object { $_.id -notmatch '(?i)embed' } | Select-Object -First 1 -ExpandProperty id
+        if (-not $chatModel) {
+            throw "Invoke-KritOffloadLmStudioCall: no non-embedding model is loaded at $baseNoV1 (Get-KritLMStudioModelsopenai returned $(@($modelList.data).Count) model(s), all embedding-shaped). Load a chat model in LM Studio first."
+        }
+        $r = New-KritLMStudioChatcompletion -Model $chatModel -Messages $messages -MaxTokens $MaxTokens -Temperature $Temperature -TimeoutSec 300 -Confirm:$false
+    } finally {
+        if ($null -eq $prevBaseUri) { Remove-Item Env:\KRIT_LMSTUDIO_BASE_URI -ErrorAction SilentlyContinue }
+        else { $env:KRIT_LMSTUDIO_BASE_URI = $prevBaseUri }
+    }
+
     $content = [string]$r.choices[0].message.content
     if ([string]::IsNullOrWhiteSpace($content)) {
         # "silent success is failure" — an OpenAI-compatible 200 with an empty message body is a
         # real observed failure mode (measured 2026-08-02 on a reasoning model via a different
         # route), never a pass. Callers of this function see FinishReason/Usage to diagnose.
-        Write-Warning "Invoke-KritOffloadLmStudioCall: HTTP 200 from $uri but EMPTY content (finish_reason=$($r.choices[0].finish_reason)). Treat as a failed call, not a quiet success."
+        Write-Warning "Invoke-KritOffloadLmStudioCall: HTTP 200 via Kritical.PS.LMStudioAPI (base=$baseNoV1) but EMPTY content (finish_reason=$($r.choices[0].finish_reason)). Treat as a failed call, not a quiet success."
     }
     [pscustomobject]@{
         ReportedModel = $r.model
@@ -630,7 +816,53 @@ function Get-KritOffloadLmStudioStatus {
         honestly rather than a false NOT-INSTALLED, since this function does not scan the whole
         disk for it.
     #>
-    param([string]$BaseUrl = 'http://127.0.0.1:1234/v1')
+    param([string]$BaseUrl = 'http://127.0.0.1:1234/v1', [switch]$RemoteNoLocalBinaryCheck)
+    # RemoteNoLocalBinaryCheck: for a REMOTE box (W365), THIS machine's C:\Users\<me>\.lmstudio\
+    # binary/model presence tells you nothing about whether LM Studio is installed over there -
+    # skip that (local-only) check and report binary/model fields as $null/UNKNOWN rather than a
+    # false NOT-INSTALLED derived from the wrong machine's filesystem.
+    #
+    # 🔴 CORRECTED 2026-08-02: $BaseUrl here MUST be a LOCAL LOOPBACK address on THIS box, forwarded
+    # by the SecureRemoteNetworking reverse tunnel -- never the W365 tailnet IP dialed directly
+    # (see the DESCRIPTION block / -LmStudioW365Base doc above for the full corrected architecture).
+    # A closed port at that LOCAL address means the TUNNEL is the missing prerequisite -- it is NOT
+    # evidence LM Studio itself is stopped or unreachable, so this branch no longer reports
+    # 'UNREACHABLE-OR-STOPPED' (a name that wrongly implied the far-end service was the problem).
+    if ($RemoteNoLocalBinaryCheck) {
+        if ([string]::IsNullOrWhiteSpace($BaseUrl)) {
+            return [pscustomobject]@{
+                State = 'NOT-CONFIGURED'; BinaryPath = $null; BinaryPresent = $null
+                ModelsOnDiskCount = $null; ModelsOnDiskGB = $null; PortOpen = $false; LiveModelIds = @()
+                StartCommand = ''
+                Note = 'No -LmStudioW365Base was supplied. Once the SecureRemoteNetworking reverse tunnel is up, this must be a LOCAL loopback address (127.0.0.1:<forwarded-port>) on THIS box, never the W365 tailnet IP directly. No network call was attempted against a guessed address.'
+            }
+        }
+        $portOpenRemote = Test-KritOffloadRouteReachable -BaseUrl $BaseUrl -TimeoutMs 1200
+        $liveModelsRemote = @()
+        if ($portOpenRemote) {
+            try {
+                $mr = Invoke-RestMethod -Uri "$($BaseUrl.TrimEnd('/'))/models" -Method Get -TimeoutSec 5
+                $liveModelsRemote = @($mr.data | ForEach-Object { $_.id })
+            } catch {
+                Write-Verbose "Get-KritOffloadLmStudioStatus(remote): /models probe failed: $($_.Exception.Message)"
+            }
+        }
+        return [pscustomobject]@{
+            State             = if ($portOpenRemote) { 'RUNNING-AND-ANSWERING' } else { 'TUNNEL-NOT-ESTABLISHED' }
+            BinaryPath        = $null
+            BinaryPresent     = $null
+            ModelsOnDiskCount = $null
+            ModelsOnDiskGB    = $null
+            PortOpen          = $portOpenRemote
+            LiveModelIds      = $liveModelsRemote
+            StartCommand      = ''
+            Note              = if ($portOpenRemote) {
+                'Remote (W365) target via a local loopback forwarded port - local-machine binary/model-on-disk checks do not apply; only the network probe is meaningful here.'
+            } else {
+                'TUNNEL-NOT-ESTABLISHED: nothing answers at this LOCAL loopback address yet. Per the corrected 2026-08-02 architecture this means the SecureRemoteNetworking reverse tunnel is the missing prerequisite -- it does NOT mean LM Studio itself is stopped or unreachable (a loopback-bound LM Studio on the W365 box is invisible to any probe that is not routed through the tunnel, by design). Bring the tunnel up per Kritical.SecureRemoteNetworking\docs\REVERSE-TUNNEL-BIDIRECTIONAL-TAILNET-DESIGN-20260802.md, then re-probe.'
+            }
+        }
+    }
     $binaryPath = Join-Path $env:USERPROFILE '.lmstudio\bin\lms.exe'
     $modelsRoot = Join-Path $env:USERPROFILE '.lmstudio\models'
     $binaryPresent = Test-Path -LiteralPath $binaryPath
@@ -676,13 +908,15 @@ function Get-KritOffloadLmStudioStatus {
 
 if ($StatusOnly) {
     $lmStatus = Get-KritOffloadLmStudioStatus -BaseUrl $LmStudioBase
+    $lmW365Status = Get-KritOffloadLmStudioStatus -BaseUrl $LmStudioW365Base -RemoteNoLocalBinaryCheck
     $nvidiaStatus = Test-KritOffloadDirectProviderStatus -ModelsUrl $script:KritOffloadDirectProviders['nvidia-direct'].ModelsUrl -KeyEnvVar $script:KritOffloadDirectProviders['nvidia-direct'].KeyEnvVar -OverrideKey $NvidiaApiKey
     $orStatus = Test-KritOffloadDirectProviderStatus -ModelsUrl $script:KritOffloadDirectProviders['openrouter-direct'].ModelsUrl -KeyEnvVar $script:KritOffloadDirectProviders['openrouter-direct'].KeyEnvVar -OverrideKey $OpenRouterApiKey
     $mistralStatus = Test-KritOffloadDirectProviderStatus -ModelsUrl $script:KritOffloadDirectProviders['mistral-direct'].ModelsUrl -KeyEnvVar $script:KritOffloadDirectProviders['mistral-direct'].KeyEnvVar -OverrideKey $MistralApiKey
     $dockerReachable = Test-KritOffloadRouteReachable -BaseUrl $HostedProxyBase
 
     $report = @(
-        [pscustomobject]@{ Provider = 'lmstudio (local NPU or W365 tunnel)'; State = $lmStatus.State; Detail = "binary=$($lmStatus.BinaryPresent) models=$($lmStatus.ModelsOnDiskCount)($($lmStatus.ModelsOnDiskGB)GB) port1234=$($lmStatus.PortOpen)"; StartCommand = $(if ($lmStatus.State -eq 'INSTALLED-NOT-RUNNING') { $lmStatus.StartCommand } else { '' }) }
+        [pscustomobject]@{ Provider = 'lmstudio-local (this laptop)'; State = $lmStatus.State; Detail = "binary=$($lmStatus.BinaryPresent) models=$($lmStatus.ModelsOnDiskCount)($($lmStatus.ModelsOnDiskGB)GB) port1234=$($lmStatus.PortOpen)"; StartCommand = $(if ($lmStatus.State -eq 'INSTALLED-NOT-RUNNING') { $lmStatus.StartCommand } else { '' }) }
+        [pscustomobject]@{ Provider = 'lmstudio-w365 (Cloud PC)'; State = $lmW365Status.State; Detail = $(if ($lmW365Status.State -eq 'NOT-CONFIGURED') { $lmW365Status.Note } else { "port=$($lmW365Status.PortOpen) base=$LmStudioW365Base" }); StartCommand = '' }
         [pscustomobject]@{ Provider = 'nvidia-direct';     State = $nvidiaStatus.Status;  Detail = $nvidiaStatus.Reason;  StartCommand = '' }
         [pscustomobject]@{ Provider = 'openrouter-direct'; State = $orStatus.Status;      Detail = $orStatus.Reason;      StartCommand = '' }
         [pscustomobject]@{ Provider = 'mistral-direct';    State = $mistralStatus.Status; Detail = $mistralStatus.Reason; StartCommand = '' }
@@ -714,6 +948,10 @@ if (-not $HostedProxyKey) {
 }
 
 $lmReachable     = Test-KritOffloadRouteReachable -BaseUrl $LmStudioBase
+# Fail-fast, never guess: only probe the W365 leg at all if a real base URL was configured. An
+# empty -LmStudioW365Base means "not configured" and $lmW365Reachable stays $false with zero
+# network calls attempted against a made-up address.
+$lmW365Reachable = if ([string]::IsNullOrWhiteSpace($LmStudioW365Base)) { $false } else { Test-KritOffloadRouteReachable -BaseUrl $LmStudioW365Base }
 $hostedReachable = Test-KritOffloadRouteReachable -BaseUrl $HostedProxyBase
 
 # ---- Tier 2b direct-HTTPS provider status (live probes, never cached beliefs) ----
@@ -731,16 +969,29 @@ $resolvedRoute = $null
 $refusalReason = $null
 
 if ($Sensitive) {
+    # Both lmstudio-local and lmstudio-w365 are Tier 1 (nothing leaves the estate) - try local
+    # first (fewer moving parts - no tunnel involved), then W365 if configured and local is down.
     if ($lmReachable) {
         $resolvedRoute = 'lmstudio'
+    } elseif ($lmW365Reachable) {
+        $resolvedRoute = 'lmstudio-w365'
     } else {
-        $refusalReason = "SENSITIVE payload and Tier 1 (LM Studio) is UNREACHABLE at $LmStudioBase (W365 tunnel not up / LM Studio server not started). " +
+        $w365Detail = if ([string]::IsNullOrWhiteSpace($LmStudioW365Base)) { 'not configured (-LmStudioW365Base empty)' } else { "tunnel-not-established at $LmStudioW365Base (this must be a LOCAL loopback forwarded port; a closed port here means the reverse tunnel is down, not that LM Studio itself is)" }
+        $refusalReason = "SENSITIVE payload and Tier 1 (LM Studio) is UNREACHABLE - local at ${LmStudioBase}: unreachable; W365 leg: $w365Detail. " +
                           "Refusing to send — sensitive payloads are NEVER downgraded to a hosted provider."
     }
 } elseif ($Route -ne 'auto') {
-    if ($Route -eq 'lmstudio') {
+    if ($Route -eq 'lmstudio' -or $Route -eq 'lmstudio-local') {
         if ($lmReachable) { $resolvedRoute = 'lmstudio' }
-        else { $refusalReason = "Explicit -Route lmstudio requested but Tier 1 is UNREACHABLE at $LmStudioBase." }
+        else { $refusalReason = "Explicit -Route $Route requested but Tier 1 (local) is UNREACHABLE at $LmStudioBase." }
+    } elseif ($Route -eq 'lmstudio-w365') {
+        if ([string]::IsNullOrWhiteSpace($LmStudioW365Base)) {
+            $refusalReason = "Explicit -Route lmstudio-w365 requested but -LmStudioW365Base was not supplied (NOT-CONFIGURED) - no network call was attempted against a guessed address. Supply the real W365 LiteLLM-forwarded address once the operator brings that box up."
+        } elseif ($lmW365Reachable) {
+            $resolvedRoute = 'lmstudio-w365'
+        } else {
+            $refusalReason = "Explicit -Route lmstudio-w365 requested but is TUNNEL-NOT-ESTABLISHED at $LmStudioW365Base -- this must be a LOCAL loopback forwarded port; nothing answering there means the SecureRemoteNetworking reverse tunnel is down, not (necessarily) that LM Studio itself is stopped. See Kritical.SecureRemoteNetworking\\docs\\REVERSE-TUNNEL-BIDIRECTIONAL-TAILNET-DESIGN-20260802.md."
+        }
     } elseif ($script:KritOffloadDirectProviders.Contains($Route)) {
         $st = $directStatus[$Route]
         if ($st.Status -eq 'OK') { $resolvedRoute = $Route }
@@ -764,13 +1015,15 @@ if ($Sensitive) {
     # 2026-08-02: "on total failure it must FAIL LOUDLY, never silently fall back to Anthropic —
     # that would defeat the entire point and burn the tokens this exists to save").
     if ($lmReachable) { $resolvedRoute = 'lmstudio' }
+    elseif ($lmW365Reachable) { $resolvedRoute = 'lmstudio-w365' }
     elseif ($directStatus['nvidia-direct'].Status -eq 'OK') { $resolvedRoute = 'nvidia-direct' }
     elseif ($directStatus['openrouter-direct'].Status -eq 'OK') { $resolvedRoute = 'openrouter-direct' }
     elseif ($hostedReachable -and $HostedProxyKey) { $resolvedRoute = 'kritical-openrouter' }
     elseif ($directStatus['mistral-direct'].Status -eq 'OK') { $resolvedRoute = 'mistral-direct' }
     else {
         $reasons = @(
-            "lmstudio ($LmStudioBase): unreachable"
+            "lmstudio-local ($LmStudioBase): unreachable"
+            "lmstudio-w365: $(if ([string]::IsNullOrWhiteSpace($LmStudioW365Base)) { 'not configured' } else { "tunnel-not-established at $LmStudioW365Base (LOCAL loopback forwarded port; reverse tunnel is the likely missing piece, not LM Studio itself)" })"
             "nvidia-direct: $($directStatus['nvidia-direct'].Status) -- $($directStatus['nvidia-direct'].Reason)"
             "openrouter-direct: $($directStatus['openrouter-direct'].Status) -- $($directStatus['openrouter-direct'].Reason)"
             "kritical-litellm-docker ($HostedProxyBase): $(if ($hostedReachable) { 'reachable but no key' } else { 'unreachable (Docker daemon not running)' })"
@@ -782,7 +1035,7 @@ if ($Sensitive) {
 
 # ---- egress scan (Tier 2 / hosted routes only — nothing leaves the estate via Tier 1) ----
 $egress = Test-KritOffloadEgressSafe -Text ($(if ($System) { "$System`n$Prompt" } else { $Prompt }))
-$isHostedRoute = ($resolvedRoute -and $resolvedRoute -ne 'lmstudio')
+$isHostedRoute = ($resolvedRoute -and $resolvedRoute -ne 'lmstudio' -and $resolvedRoute -ne 'lmstudio-w365')
 
 if (-not $refusalReason -and $isHostedRoute -and -not $egress.Safe) {
     $refusalReason = "Egress scan REFUSED this payload for hosted route '$resolvedRoute' — matched rule(s): $($egress.Reasons -join ', '). " +
@@ -803,6 +1056,7 @@ $auditBase = @{
     resolvedRoute  = $resolvedRoute
     sensitive      = [bool]$Sensitive
     lmReachable    = $lmReachable
+    lmW365Reachable= $lmW365Reachable
     hostedReachable= $hostedReachable
     egressSafe     = $egress.Safe
     egressReasons  = $egress.Reasons
@@ -835,6 +1089,8 @@ if ($DryRun -or $WhatIfPreference -or -not $PSCmdlet.ShouldProcess("route=$resol
 try {
     if ($resolvedRoute -eq 'lmstudio') {
         $result = script:Invoke-KritOffloadLmStudioCall -Prompt $Prompt -System $System -MaxTokens $MaxTokens -Temperature $Temperature -Base $LmStudioBase
+    } elseif ($resolvedRoute -eq 'lmstudio-w365') {
+        $result = script:Invoke-KritOffloadLmStudioCall -Prompt $Prompt -System $System -MaxTokens $MaxTokens -Temperature $Temperature -Base $LmStudioW365Base
     } elseif ($script:KritOffloadDirectProviders.Contains($resolvedRoute)) {
         $overrideKey = switch ($resolvedRoute) {
             'nvidia-direct'     { $NvidiaApiKey }

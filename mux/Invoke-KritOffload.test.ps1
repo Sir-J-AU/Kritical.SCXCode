@@ -146,6 +146,54 @@ try {
     }
 }
 
+# ---- 9. 🔴 2026-08-02 lmstudio-w365 ADDED: an unconfigured W365 base (the default, empty
+#         string) refuses FAST with a named NOT-CONFIGURED reason and makes NO network call
+#         against a guessed address — the exact "fail fast and visibly, never hang" requirement. ----
+Assert-KritOffloadCase -Name 'lmstudio-w365-not-configured-refuses-fast' -ExpectThrow $true -ExpectMessageMatch 'NOT-CONFIGURED' -Body {
+    & $scriptPath -Prompt 'test' -Route lmstudio-w365
+}
+
+# ---- 10. An explicit but UNREACHABLE lmstudio-w365 base (garbage address, closed port) refuses
+#          with a reason distinct from NOT-CONFIGURED — proves the two failure modes are told
+#          apart, not collapsed into one generic error.
+#          🔴 FIXED 2026-08-22 (lane lmstudio-offload-merge-20260822): the assertion regex was
+#          /UNREACHABLE/, a PRE-EXISTING bug dating to commit 52df5a4 ("Correct W365 offload
+#          tunnel semantics", 2026-08-07) — that commit deliberately renamed this refusal's wording
+#          from "UNREACHABLE at ..." to "TUNNEL-NOT-ESTABLISHED at ..." (a real, intentional
+#          precision improvement: an unreachable LOCAL loopback port means the reverse tunnel is
+#          down, not that LM Studio itself is unreachable) but never updated this test file in the
+#          same commit, so this case had been RED ever since (proven: git show 52df5a4 --stat does
+#          not list mux/Invoke-KritOffload.test.ps1 among the changed files). Not introduced by, or
+#          related to, the same-session Kritical.PS.LMStudioAPI client refactor — that refactor
+#          only touches Invoke-KritOffloadLmStudioCall, which this refusal path never reaches (it
+#          throws in MAIN before any LM Studio call is attempted). Fixed here by matching the
+#          CURRENT, intentional wording rather than reverting the production message. ----
+Assert-KritOffloadCase -Name 'lmstudio-w365-configured-but-unreachable-refuses' -ExpectThrow $true -ExpectMessageMatch 'TUNNEL-NOT-ESTABLISHED' -Body {
+    & $scriptPath -Prompt 'test' -Route lmstudio-w365 -LmStudioW365Base 'http://127.0.0.1:1/definitely-closed'
+}
+
+# ---- 11. Legacy -Route lmstudio (pre-2026-08-02 callers) still behaves exactly as before —
+#          proves the new lmstudio-local/lmstudio-w365 split did not break the existing name. ----
+Assert-KritOffloadCase -Name 'legacy-route-lmstudio-still-works-as-local-alias' -ExpectThrow $true -ExpectMessageMatch 'Tier 1 \(local\) is UNREACHABLE' -Body {
+    & $scriptPath -Prompt 'test' -Route lmstudio -LmStudioBase 'http://127.0.0.1:1/definitely-closed'
+}
+
+# ---- 12. -StatusOnly reports lmstudio-local and lmstudio-w365 as TWO SEPARATE rows (not one
+#          conflated "lmstudio" row) — the actual ask: distinct, individually-reachable targets. ----
+$statusResult = $null
+try {
+    $statusResult = & $scriptPath -StatusOnly
+    $hasLocal = [bool]($statusResult | Where-Object { $_.Provider -like 'lmstudio-local*' })
+    $hasW365  = [bool]($statusResult | Where-Object { $_.Provider -like 'lmstudio-w365*' })
+    $w365Row  = $statusResult | Where-Object { $_.Provider -like 'lmstudio-w365*' } | Select-Object -First 1
+    $w365ReportsNotConfigured = ($w365Row -and $w365Row.State -eq 'NOT-CONFIGURED')
+    $pass = $hasLocal -and $hasW365 -and $w365ReportsNotConfigured
+    $detail = if (-not $pass) { "hasLocal=$hasLocal hasW365=$hasW365 w365State=$($w365Row.State)" } else { '' }
+    $results.Add([pscustomobject]@{ Case = 'statusonly-reports-two-distinct-lmstudio-rows'; Pass = $pass; Detail = $detail; RawMessage = $null })
+} catch {
+    $results.Add([pscustomobject]@{ Case = 'statusonly-reports-two-distinct-lmstudio-rows'; Pass = $false; Detail = "threw unexpectedly: $($_.Exception.Message)"; RawMessage = $_.Exception.Message })
+}
+
 # ---- report ----
 $results | Format-Table Case, Pass, Detail -AutoSize
 $failCount = @($results | Where-Object { -not $_.Pass }).Count
