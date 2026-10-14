@@ -11,6 +11,10 @@ jobs:
   # Path C — VS Code extension build
   # ────────────────────────────────────────────────────────────────
   build-vscode-extension:
+    # Hosted Actions is opt-in while the account runner/billing path is unavailable.
+    # The check name and gate steps remain intact; local deterministic gates are the
+    # authoritative path until this repository variable is explicitly enabled.
+    if: ${{ vars.KRITICAL_GW_HOSTED_GATES_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -35,6 +39,10 @@ jobs:
   # Path D — PowerShell module
   # ────────────────────────────────────────────────────────────────
   test-ps-module:
+    # Hosted Actions is opt-in while the account runner/billing path is unavailable.
+    # The check name and gate steps remain intact; local deterministic gates are the
+    # authoritative path until this repository variable is explicitly enabled.
+    if: ${{ vars.KRITICAL_GW_HOSTED_GATES_ENABLED == 'true' }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -56,6 +64,10 @@ jobs:
   # Path E — MCP server
   # ────────────────────────────────────────────────────────────────
   test-mcp-server:
+    # Hosted Actions is opt-in while the account runner/billing path is unavailable.
+    # The check name and gate steps remain intact; local deterministic gates are the
+    # authoritative path until this repository variable is explicitly enabled.
+    if: ${{ vars.KRITICAL_GW_HOSTED_GATES_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -77,6 +89,10 @@ jobs:
   # Path A — Continue config JSON validity
   # ────────────────────────────────────────────────────────────────
   test-continue-config:
+    # Hosted Actions is opt-in while the account runner/billing path is unavailable.
+    # The check name and gate steps remain intact; local deterministic gates are the
+    # authoritative path until this repository variable is explicitly enabled.
+    if: ${{ vars.KRITICAL_GW_HOSTED_GATES_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -88,6 +104,10 @@ jobs:
   # Install scripts — parse-check + Status mode dry-run
   # ────────────────────────────────────────────────────────────────
   test-install-scripts:
+    # Hosted Actions is opt-in while the account runner/billing path is unavailable.
+    # The check name and gate steps remain intact; local deterministic gates are the
+    # authoritative path until this repository variable is explicitly enabled.
+    if: ${{ vars.KRITICAL_GW_HOSTED_GATES_ENABLED == 'true' }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
