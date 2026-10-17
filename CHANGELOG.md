@@ -1,3 +1,28 @@
+<!-- KRIT-DOC-NEUTER kes-SUBMOD-20260923 2026-09-23
+THIS DOCUMENT HAS BEEN PROGRAMMATICALLY MARKED. 1 reference(s) below were checked
+against the scripts that would have to implement them and were NOT FOUND. Each is struck through
+and carries a bold unmount flag naming what replaces it. The original text is kept struck through
+rather than deleted, so what this document used to claim is still readable and the change is
+reviewable. A bulk pass like this can bruise prose; a dead reference that can still be believed is
+worse.
+
+This banner deliberately does NOT spell out the flag's own marker text. It used to, and that made
+the banner itself count as a mark -- every detector that counts flags in a file read one too many,
+and this file's own harness caught it on 2026-09-23 (T7). A banner that matches the thing it
+describes is a defect, not a wording preference. -->
+<!-- KRIT-DOC-NEUTER-CODE-SAMPLES kes-SUBMOD-20260923 2026-09-23
+4 further dead or hazardous reference(s) appear in this document ONLY INSIDE A
+CODE EXAMPLE OR INSIDE A URL, and were deliberately NOT marked inline. A marker inside a fenced
+block or an inline span does not render, and it turns a copy-pasteable command into one that cannot
+run; a marker through the middle of a URL leaves a link that no longer resolves. So the code and the
+links are left exactly as they were and the references are named here instead. THEY ARE STILL DEAD
+OR STILL HAZARDOUS. Do not copy a command or follow a link below without resolving these through the
+switcher first:
+  - KRIT_SHIM_PORT (cred-name, inside a code sample)
+  - KRIT_SHIM_UPSTREAM (cred-name, inside a code sample)
+  - kritical-codex (service-name, inside a code sample)
+  - kritical-local-store (service-name, inside a code sample)
+-->
 # Changelog
 
 All notable changes to this project will be documented in this file.
@@ -15,7 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **extension.ts**: `temperature` was sent verbatim; out-of-range values caused a hard 400; now clamped to SCX's proven `[0, 2]` range in `scxPost`
 - **scx-agentic-shim.mjs**: A failed plan-gate retry streamed an opaque error via the byte reader; retry failures now return cleanly with logging and telemetry
 - **scx-agentic-shim.mjs**: Telemetry `tools_out` and `flattened` reflected the first attempt payload, not the retried (server-tools-dropped) payload; both are now recomputed from the retry body
-- **kritical-codex.ps1**: Kill-switch force-killed whatever owned :4199 at teardown, potentially terminating an innocent process; now tracks the exact launched node PID and identity-checks before `Stop-Process`
+- **kritical-codex.ps1**: Kill-switch force-killed whatever owned :~~4199~~ **[AI: UNMOUNT THIS -- this port is DEAD: not present in the current text of components\external-lineage\Kritical.SCXCode\install\Install-KriticalSCX.ps1. Measured 2026-09-23 by kes-SUBMOD-20260923. Resolve it through the switcher instead: `Get-KritSetting -Key <component>.port  (or Get-KritSqlTarget for a SQL port -- 1433 is the LEGACY instance, 14331 is the authority)`]** at teardown, potentially terminating an innocent process; now tracks the exact launched node PID and identity-checks before `Stop-Process`
 - **kritical-codex.ps1**: Shim launched without `KRIT_SHIM_PORT`, `KRIT_SHIM_UPSTREAM`, or `SCX_API_KEY` in the child environment, causing silent mismatches on non-default ports; all three vars are now exported before `Start-Process`
 - **Install-KritScxLiteLLM.ps1**: Assigned to the read-only automatic `$pid` variable, throwing and breaking `Get-KritLiteLLMPid`; renamed to `$procId`
 - **Install-KritScxLiteLLM.ps1**: Same `$pid` write in `-Mode Status`; renamed to `$litellmPid`
@@ -52,7 +77,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Model support: MiniMax-M2.7, MAGPiE, gpt-oss-120b, DeepSeek-V3.1, Meta-Llama-3.3-70B-Instruct, gemma-4-31B-it, Qwen3-32B, Llama-4-Maverick-17B-128E-Instruct, and coder
 - PowerShell module (`Kritical.PS.SCXCode`) with 11 exported functions for SCX chat, auto-continue, decision logging, corpus mining, and idempotent install/heal/status
 - MCP server (`kritical-scxcode`) — stdio JSON-RPC 2.0 exposing SCX chat, corpus search, and symbol lookup as MCP tools
-- Agentic Codex shim (`scx-agentic-shim.mjs`) — localhost flatten-proxy on :4199 that rewrites Codex tool serialisation into SCX-compatible `function` tools and handles plan-gate retries with server tools dropped
+- Agentic Codex shim (`scx-agentic-shim.mjs`) — localhost flatten-proxy on :~~4199~~ **[AI: UNMOUNT THIS -- this port is DEAD: not present in the current text of components\external-lineage\Kritical.SCXCode\install\Install-KriticalSCX.ps1. Measured 2026-09-23 by kes-SUBMOD-20260923. Resolve it through the switcher instead: `Get-KritSetting -Key <component>.port  (or Get-KritSqlTarget for a SQL port -- 1433 is the LEGACY instance, 14331 is the authority)`]** that rewrites Codex tool serialisation into SCX-compatible `function` tools and handles plan-gate retries with server tools dropped
 - PowerShell Codex wrapper (`kritical-codex.ps1`) — launches the real Codex CLI routed through the shim, reusing the operator's `~/.codex` without modifying it on disk
 - Node bulk-writer / local store (`kritical-local-store.mjs`) — `node:sqlite` corpus store with zero native dependencies, ships inside the VS Code extension host
 - Lens Looking Glass — SCX-powered workspace introspection with SQL Server byte-exact ingest and corpus mining pipelines

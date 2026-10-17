@@ -1,3 +1,15 @@
+<!-- KRIT-DOC-NEUTER-CODE-SAMPLES kes-SUBMOD-20260923 2026-09-23
+3 further dead or hazardous reference(s) appear in this document ONLY INSIDE A
+CODE EXAMPLE OR INSIDE A URL, and were deliberately NOT marked inline. A marker inside a fenced
+block or an inline span does not render, and it turns a copy-pasteable command into one that cannot
+run; a marker through the middle of a URL leaves a link that no longer resolves. So the code and the
+links are left exactly as they were and the references are named here instead. THEY ARE STILL DEAD
+OR STILL HAZARDOUS. Do not copy a command or follow a link below without resolving these through the
+switcher first:
+  - kritical-free-local (service-name, inside a code sample)
+  - kritical-scx-free (service-name, inside a code sample)
+  - kritical-scx-openrouter (service-name, inside a code sample)
+-->
 # Kritical Free Router — OpenRouter + Free AI Provider Integration
 
 > **The simplest way to get free inference.** OpenRouter's `/free` endpoint selects free models at random, smartly filtering for features your request needs (vision, tools, JSON, reasoning). Combined with Groq, Together AI, Google AI Studio, DeepSeek, and more — all routed through a single local LiteLLM proxy.
