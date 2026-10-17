@@ -1,3 +1,30 @@
+> **AI: UNMOUNT THESE REFERENCES -- KRIT-DOC-NEUTER kes-SUBMOD-20260923 2026-09-23**
+>
+> THIS DOCUMENT HAS BEEN PROGRAMMATICALLY MARKED. 1 reference(s) below were checked
+> against the scripts that would have to implement them and were NOT FOUND. Each is struck through
+> and carries a bold unmount flag naming what replaces it. The original text is kept struck through
+> rather than deleted, so what this document used to claim is still readable and the change is
+> reviewable. A bulk pass like this can bruise prose; a dead reference that can still be believed is
+> worse.
+>
+> This banner deliberately does NOT spell out the flag's own marker text. It used to, and that made
+> the banner itself count as a mark -- every detector that counts flags in a file read one too many,
+> and this file's own harness caught it on 2026-09-23 (T7). A banner that matches the thing it
+> describes is a defect, not a wording preference.
+
+> **AI: UNMOUNT THESE REFERENCES -- KRIT-DOC-NEUTER-CODE-SAMPLES kes-SUBMOD-20260923 2026-09-23**
+>
+> 3 further dead or hazardous reference(s) appear in this document ONLY INSIDE A
+> CODE EXAMPLE OR INSIDE A URL, and were deliberately NOT marked inline. A marker inside a fenced
+> block or an inline span does not render, and it turns a copy-pasteable command into one that cannot
+> run; a marker through the middle of a URL leaves a link that no longer resolves. So the code and the
+> links are left exactly as they were and the references are named here instead. THEY ARE STILL DEAD
+> OR STILL HAZARDOUS. Do not copy a command or follow a link below without resolving these through the
+> switcher first:
+>   - http://127.0.0.1:4180/v1/auto-continue (url, inside a code sample)
+>   - KRITICAL_BRAIN_ENABLED (cred-name, inside a code sample)
+>   - kritical-scxcode-agent (service-name, inside a code sample)
+
 # Cowork brief — build Kritical.NodeJS.SCXCodeAgent MVP
 
 > **Fresh Claude Code session should be able to execute this doc without any prior context.**
@@ -99,7 +126,7 @@ POST /v1/tools/deep_research web_search + web_fetch loop, dedup, summarise via S
 POST /admin/kill            HR29 graceful shutdown — subprocess.kill + exit(0)
 ```
 
-The daemon spawns litellm as a subprocess on port 4182 (internal). Its own :4180/:4181 endpoints are thin wrappers that either passthrough OR augment (auto-continue / tool injection). Every augmented call still returns a valid Anthropic/OpenAI envelope so the caller does not know it went through anything.
+The daemon spawns litellm as a subprocess on port 4182 (internal). Its own :4180/:~~4181~~ **[AI: UNMOUNT THIS -- this port is DEAD: not present in the current text of components\external-lineage\Kritical.SCXCode\node-agent\install\Install-KritScxCodeAgent.ps1. Measured 2026-09-23 by kes-SUBMOD-20260923. Resolve it through the switcher instead: `Get-KritSetting -Key <component>.port  (or Get-KritSqlTarget for a SQL port -- 1433 is the LEGACY instance, 14331 is the authority)`]** endpoints are thin wrappers that either passthrough OR augment (auto-continue / tool injection). Every augmented call still returns a valid Anthropic/OpenAI envelope so the caller does not know it went through anything.
 
 ### 3. CLI — `node-agent/src/cli.mjs`
 

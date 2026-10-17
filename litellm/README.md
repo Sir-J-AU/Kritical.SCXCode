@@ -1,3 +1,17 @@
+> **AI: UNMOUNT THESE REFERENCES -- KRIT-DOC-NEUTER-CODE-SAMPLES kes-SUBMOD-20260923 2026-09-23**
+>
+> 4 further dead or hazardous reference(s) appear in this document ONLY INSIDE A
+> CODE EXAMPLE OR INSIDE A URL, and were deliberately NOT marked inline. A marker inside a fenced
+> block or an inline span does not render, and it turns a copy-pasteable command into one that cannot
+> run; a marker through the middle of a URL leaves a link that no longer resolves. So the code and the
+> links are left exactly as they were and the references are named here instead. THEY ARE STILL DEAD
+> OR STILL HAZARDOUS. Do not copy a command or follow a link below without resolving these through the
+> switcher first:
+>   - ANTHROPIC_BASE_URL (cred-name, inside a code sample)
+>   - http://127.0.0.1:4180/v1/models (url, inside a code sample)
+>   - kritical-scx-local (service-name, inside a code sample)
+>   - OPENAI_BASE_URL (cred-name, inside a code sample)
+
 # Kritical LiteLLM proxy — multi-provider front
 
 > **Universal front for SCX + Anthropic + OpenAI + any OpenAI-compatible endpoint** — a localhost LiteLLM proxy that lets any coding agent (Codex CLI / Claude Code / Aider / Cline / Continue / OpenCode / goose / our VS Code extension) point at `http://127.0.0.1:4180` and pick whichever provider is currently configured.

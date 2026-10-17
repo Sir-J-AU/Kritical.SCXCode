@@ -1,3 +1,25 @@
+> **AI: UNMOUNT THESE REFERENCES -- KRIT-DOC-NEUTER-CODE-SAMPLES kes-SUBMOD-20260923 2026-09-23**
+>
+> 12 further dead or hazardous reference(s) appear in this document ONLY INSIDE A
+> CODE EXAMPLE OR INSIDE A URL, and were deliberately NOT marked inline. A marker inside a fenced
+> block or an inline span does not render, and it turns a copy-pasteable command into one that cannot
+> run; a marker through the middle of a URL leaves a link that no longer resolves. So the code and the
+> links are left exactly as they were and the references are named here instead. THEY ARE STILL DEAD
+> OR STILL HAZARDOUS. Do not copy a command or follow a link below without resolving these through the
+> switcher first:
+>   - 4199 (port, inside a code sample)
+>   - 4270 (port, inside a code sample)
+>   - ANTHROPIC_BASE_URL (cred-name, inside a code sample)
+>   - http://127.0.0.1:4182/v1 (url, inside a code sample)
+>   - http://127.0.0.1:4199/v1 (url, inside a code sample)
+>   - KRITICAL_LOGGER_TARGET (cred-name, inside a code sample)
+>   - kritical-codex (service-name, inside a code sample)
+>   - kritical-local-store (service-name, inside a code sample)
+>   - kritical-scx-free (service-name, inside a code sample)
+>   - kritical-scx-openrouter (service-name, inside a code sample)
+>   - kritical-scxcode (service-name, inside a code sample)
+>   - OPENAI_BASE_URL (cred-name, inside a code sample)
+
 # Kritical.SCXCode Architecture
 
 Kritical.SCXCode is the additive SCX-in-coding-agents stack for Kritical Lens. Every layer is optional: if a router, shim, store, MCP server, VS Code extension, or supervisor is stopped, the underlying agent must still be able to run through its native path.
