@@ -1,28 +1,31 @@
-<!-- KRIT-DOC-NEUTER kes-SUBMOD-20260923 2026-09-23
-THIS DOCUMENT HAS BEEN PROGRAMMATICALLY MARKED. 1 reference(s) below were checked
-against the scripts that would have to implement them and were NOT FOUND. Each is struck through
-and carries a bold unmount flag naming what replaces it. The original text is kept struck through
-rather than deleted, so what this document used to claim is still readable and the change is
-reviewable. A bulk pass like this can bruise prose; a dead reference that can still be believed is
-worse.
+> **AI: UNMOUNT THESE REFERENCES -- KRIT-DOC-NEUTER kes-SUBMOD-20260923 2026-09-23**
+>
+> THIS DOCUMENT HAS BEEN PROGRAMMATICALLY MARKED. 1 reference(s) below were checked
+> against the scripts that would have to implement them and were NOT FOUND. Each is struck through
+> and carries a bold unmount flag naming what replaces it. The original text is kept struck through
+> rather than deleted, so what this document used to claim is still readable and the change is
+> reviewable. A bulk pass like this can bruise prose; a dead reference that can still be believed is
+> worse.
+>
+> This banner deliberately does NOT spell out the flag's own marker text. It used to, and that made
+> the banner itself count as a mark -- every detector that counts flags in a file read one too many,
+> and this file's own harness caught it on 2026-09-23 (T7). A banner that matches the thing it
+> describes is a defect, not a wording preference.
 
-This banner deliberately does NOT spell out the flag's own marker text. It used to, and that made
-the banner itself count as a mark -- every detector that counts flags in a file read one too many,
-and this file's own harness caught it on 2026-09-23 (T7). A banner that matches the thing it
-describes is a defect, not a wording preference. -->
-<!-- KRIT-DOC-NEUTER-CODE-SAMPLES kes-SUBMOD-20260923 2026-09-23
-4 further dead or hazardous reference(s) appear in this document ONLY INSIDE A
-CODE EXAMPLE OR INSIDE A URL, and were deliberately NOT marked inline. A marker inside a fenced
-block or an inline span does not render, and it turns a copy-pasteable command into one that cannot
-run; a marker through the middle of a URL leaves a link that no longer resolves. So the code and the
-links are left exactly as they were and the references are named here instead. THEY ARE STILL DEAD
-OR STILL HAZARDOUS. Do not copy a command or follow a link below without resolving these through the
-switcher first:
-  - KRIT_SHIM_PORT (cred-name, inside a code sample)
-  - KRIT_SHIM_UPSTREAM (cred-name, inside a code sample)
-  - kritical-codex (service-name, inside a code sample)
-  - kritical-local-store (service-name, inside a code sample)
--->
+> **AI: UNMOUNT THESE REFERENCES -- KRIT-DOC-NEUTER-CODE-SAMPLES kes-SUBMOD-20260923 2026-09-23**
+>
+> 4 further dead or hazardous reference(s) appear in this document ONLY INSIDE A
+> CODE EXAMPLE OR INSIDE A URL, and were deliberately NOT marked inline. A marker inside a fenced
+> block or an inline span does not render, and it turns a copy-pasteable command into one that cannot
+> run; a marker through the middle of a URL leaves a link that no longer resolves. So the code and the
+> links are left exactly as they were and the references are named here instead. THEY ARE STILL DEAD
+> OR STILL HAZARDOUS. Do not copy a command or follow a link below without resolving these through the
+> switcher first:
+>   - KRIT_SHIM_PORT (cred-name, inside a code sample)
+>   - KRIT_SHIM_UPSTREAM (cred-name, inside a code sample)
+>   - kritical-codex (service-name, inside a code sample)
+>   - kritical-local-store (service-name, inside a code sample)
+
 <!-- Tick-off ledger for the .5231 deep-bughunt fix wave. Findings from the `scx-deep-bughunt`
      34-agent adversarial workflow (task w3z724m1b): 27 confirmed bugs. -->
 
