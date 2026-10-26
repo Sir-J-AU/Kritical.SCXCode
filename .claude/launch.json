@@ -1,6 +1,0 @@
-{
-  "version": "0.0.1",
-  "configurations": [
-    { "name": "scxcode-preview", "runtimeExecutable": "python", "runtimeArgs": ["-m","http.server","8791","--directory","tests/emitted"], "port": 8791 }
-  ]
-}
