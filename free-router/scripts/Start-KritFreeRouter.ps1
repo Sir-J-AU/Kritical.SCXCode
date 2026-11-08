@@ -20,6 +20,7 @@
       'free'      -> kritical-scx-free.config.yaml (default, port 4182)
       'openrouter'-> kritical-scx-openrouter.config.yaml (port 4180)
       'scx'       -> kritical-scx.config.yaml (port 4180)
+      'freeonly'  -> kritical-openrouter-free-only.config.yaml (port 4180; OpenRouter $0 models only, NO paid fallback)
 .PARAMETER Port
     Override the default port.
 .PARAMETER Host
@@ -40,7 +41,7 @@
 [CmdletBinding()]
 param(
     [ValidateSet('Start','Stop','Heal','Status')] [string] $Mode = 'Status',
-    [ValidateSet('free','openrouter','scx')] [string] $Config = 'free',
+    [ValidateSet('free','openrouter','scx','freeonly')] [string] $Config = 'free',
     [int] $Port = 0,  # 0 = auto from config
     [string] $BindHost = '127.0.0.1',
     [string] $PythonExe = 'python'
@@ -54,8 +55,9 @@ $configs = @{
     free       = Join-Path $repoRoot 'litellm\kritical-scx-free.config.yaml'
     openrouter = Join-Path $repoRoot 'litellm\kritical-scx-openrouter.config.yaml'
     scx        = Join-Path $repoRoot 'litellm\kritical-scx.config.yaml'
+    freeonly   = Join-Path $repoRoot 'litellm\kritical-openrouter-free-only.config.yaml'
 }
-$defaultPorts = @{ free = 4182; openrouter = 4180; scx = 4180 }
+$defaultPorts = @{ free = 4182; openrouter = 4180; scx = 4180; freeonly = 4180 }
 
 $configPath = $configs[$Config]
 if (-not (Test-Path $configPath)) {

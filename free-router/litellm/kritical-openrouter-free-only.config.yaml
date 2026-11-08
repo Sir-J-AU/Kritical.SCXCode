@@ -1,0 +1,39 @@
+# Kritical LiteLLM proxy -- OPENROUTER FREE TIER ONLY (port 4180)
+# Every route below is an OpenRouter model whose live /api/v1/models pricing is
+# prompt=0 AND completion=0 (verified 2026-11-08). No SCX, no paid provider, no
+# fallback leaves the free pool. Only OPENROUTER_API_KEY is read (by NAME).
+# Slugs rotate: re-check with scripts/Update-KritOpenRouterFreeModels.ps1.
+# Additive (HR29): stop the router and nothing else is affected.
+model_list:
+  - model_name: free-auto
+    litellm_params: { model: openrouter/openrouter/free, api_key: os.environ/OPENROUTER_API_KEY }
+  - model_name: free-nemotron-ultra
+    litellm_params: { model: "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free", api_key: os.environ/OPENROUTER_API_KEY }
+  - model_name: free-nemotron-lightning
+    litellm_params: { model: "openrouter/nvidia/nemotron-3.5-lightning:free", api_key: os.environ/OPENROUTER_API_KEY }
+  - model_name: free-gemma-4-31b
+    litellm_params: { model: "openrouter/google/gemma-4-31b-it:free", api_key: os.environ/OPENROUTER_API_KEY }
+  - model_name: free-north-mini-code
+    litellm_params: { model: "openrouter/cohere/north-mini-code:free", api_key: os.environ/OPENROUTER_API_KEY }
+
+router_settings:
+  routing_strategy: simple-shuffle
+  num_retries: 0
+  timeout: 90
+  allowed_fails: 1
+  cooldown_time: 30
+  # 429 / error cascade stays inside the free pool
+  fallbacks:
+    - free-nemotron-ultra:     [free-nemotron-lightning, free-gemma-4-31b, free-north-mini-code, free-auto]
+    - free-nemotron-lightning: [free-gemma-4-31b, free-north-mini-code, free-auto]
+    - free-gemma-4-31b:        [free-north-mini-code, free-nemotron-lightning, free-auto]
+    - free-north-mini-code:    [free-gemma-4-31b, free-nemotron-lightning, free-auto]
+    - free-auto:               [free-nemotron-lightning, free-gemma-4-31b, free-north-mini-code]
+
+general_settings:
+  master_key: sk-kritical-free-local   # local-only router token, not a provider secret
+  drop_params: true
+
+litellm_settings:
+  set_verbose: false
+  json_logs: true
